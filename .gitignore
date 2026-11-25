@@ -1,0 +1,46 @@
+# Local agent/plugin state
+.omc/
+.superpowers/
+.claude/settings.local.json
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.tfvars
+!*.tfvars.example
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+dist/
+coverage/
+
+# Data / snapshots (published separately, never committed)
+data/
+snapshots/
+*.parquet
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
