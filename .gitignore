@@ -49,3 +49,8 @@ Thumbs.db
 eval/runs/
 infra/terraform/**/backend_override.tf
 infra/terraform/**/terraform.tfvars
+
+# Swarm state and tool outputs (W1-T16, ADR 0037)
+.swarm/
+.hypothesis/
+coverage.xml
