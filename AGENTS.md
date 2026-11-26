@@ -24,8 +24,7 @@ Before any task, load the `rootline-wiki` skill (or read `.claude/skills/rootlin
 ## Commit rules (GEN-022)
 
 - Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:`, with optional scope = component directory name, e.g. `feat(agent): add verify node`.
-- Commits authored by AI agents end with the attribution trailer in use in the session, currently:
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+- Commits end with the trailer for your role in `docs/superpowers/plans/2026-11-26-rootline-00-overview.md` §7.1, "Commit attribution trailers" (implementer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`, planner `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, coordinator `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>`).
 
 ## Agent models and roles (owner instruction, 2026-11-26 — mandatory)
 
