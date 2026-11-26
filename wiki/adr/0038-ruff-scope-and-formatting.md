@@ -24,7 +24,7 @@ A one-time `uv run ruff format .` step in W1-T14 was considered. W1-T14 runs in 
 4. W1-T16 Step 0 applies decisions 1 and 3 to the committed files in one commit in the W1-T16 PR: `pyproject.toml` and `tests/repo/test_layout.py`, nothing else. W1-T16 runs in the sequential stage W1-S2, so the ownership check allows both files and the schedule YAML does not change.
 5. W1-T14 keeps `uv run ruff format --check .` exactly as planned and adds no format step.
 
-This follows spec §0.3: one configuration line and a per-commit habit are simpler and cheaper than reformatting the spec and four plan files (about 1,800 changed lines), and safer, because the owner-approved spec text stays as approved.
+This follows spec §0.3: one configuration line and a per-commit habit are simpler and cheaper than reformatting the five Markdown files listed in Context item 2 (the spec and the plan files for weeks 1 to 4), and safer, because the owner-approved spec text stays as approved.
 
 ## Consequences
 
@@ -38,7 +38,7 @@ This follows spec §0.3: one configuration line and a per-commit habit are simpl
 | Alternative | Why rejected |
 |---|---|
 | One-time `uv run ruff format .` in W1-T14 | Not executable as written: W1-T14 is in parallel stage W1-P3 and does not own the affected files (overview §7.4, gate check G1); it would also rewrite the spec's code blocks |
-| Reformat all Markdown code blocks with `uv run ruff format docs` and keep Markdown in scope | About 1,800 changed lines in the approved spec and plans; aligned comments in interface listings become harder to read; every plan edit after that would also have to be ruff-formatted |
+| Reformat all Markdown code blocks with `uv run ruff format docs` and keep Markdown in scope | Rewrites code blocks in the five Markdown files listed in Context item 2, including the owner-approved spec; aligned comments in interface listings become harder to read; every plan edit after that would also have to be ruff-formatted |
 | Pass `--exclude` on each command line (`ci.yml`, `scripts/lint.py`, G5) | Three places to keep in sync instead of one configuration line |
 | Reformat `tests/repo/test_layout.py` in a commit of W1-T16 without changing the plan | The plan block and the committed file would differ, and the next agent copying the block would reintroduce the failure |
 

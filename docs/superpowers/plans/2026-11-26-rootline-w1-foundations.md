@@ -452,8 +452,9 @@ W1-T16 is in a sequential stage, so the schedule gives it no `owns` list and `sc
 
 Before Step 1, on `feat/w1-swarm-tooling` (branched from the `develop` tip, which contains `4898699` and this plan amendment). This is a separate commit so the reviewer can check it apart from the tooling.
 
+0. Precondition (no worktree checkouts under `.swarm/`): run `git worktree list --porcelain`. If any line that starts with `worktree ` names a path under `/home/arkhash0309/projects/rootline/.swarm/worktrees/`, stop and report `BLOCKED` with those lines; do not run steps 1 to 6. Reason: `.swarm/` is not in `.gitignore` until Step 7, so ruff would also check the Python files inside those worktree checkouts and the step 2 and step 5 counts would not hold. The coordinator then removes each listed worktree with `git worktree remove <path>`, runs `git worktree prune`, and re-dispatches this step. If no line names such a path, continue with step 1. The `.gitignore` change stays in Step 7.
 1. Run `uv run pytest tests/repo/test_layout.py -v`. Expected on `4898699`: `test_no_unexpected_top_level_entries` FAILS with `new top-level entries need an ADR: ['.swarm']` when the coordinator's `.swarm/` directory exists in the checkout. If `.swarm/` does not exist in the checkout, the test passes; continue anyway.
-2. Run `uv run ruff format --check .`. Expected before this step: exit 1; ruff `0.17.6` prints one `unformatted: File would be reformatted` entry per file, each followed by a `--> <path>:<line>:<col>` line, for `tests/repo/test_layout.py` and for one or more `*.md` files under `docs/superpowers/` (the spec and the plan files contain unformatted `python` code blocks), and ends with `<n> files would be reformatted, <m> files already formatted`.
+2. Run `uv run ruff format --check .`. Expected before this step: exit 1; ruff `0.17.6` prints one `unformatted: File would be reformatted` entry per file, each followed by a `--> <path>:<line>:<col>` line, for these six files: `tests/repo/test_layout.py`, `docs/superpowers/specs/2026-11-25-rootline-design.md`, `docs/superpowers/plans/2026-11-26-rootline-w1-foundations.md`, `docs/superpowers/plans/2026-11-26-rootline-w2-fault-lab.md`, `docs/superpowers/plans/2026-11-26-rootline-w3-identity-mcp.md` and `docs/superpowers/plans/2026-11-26-rootline-w4-agent-mvp.md` (the spec and the plan files contain unformatted `python` code blocks), and ends with the line `6 files would be reformatted, 28 files already formatted` (verified on `ec2a811`). A different count does not block this step when step 0 passed; record the printed last line in the PR description and continue.
 3. Replace the whole content of `tests/repo/test_layout.py` with the W1-T01 Step 1 `tests/repo/test_layout.py` block, character for character. Do not edit `tests/repo/conftest.py`.
 4. In the root `pyproject.toml`, add the line `extend-exclude = ["*.md"]` directly after `target-version = "py312"` in `[tool.ruff]`. Change nothing else in the file. `uv.lock` does not change (ruff settings are not dependencies). If `uv lock --check` reports a change, stop and report `BLOCKED`.
 5. Run, in this order, and require each result:
@@ -471,7 +472,7 @@ If `uv run ruff format --check .` still lists a file, the only allowed fix is `u
 
 ```bash
 git add pyproject.toml tests/repo/test_layout.py
-git commit -m "style: ruff-format layout test, allow .swarm and tool outputs, exclude Markdown from ruff
+git commit -m "chore: ruff-format layout test, allow .swarm and tool outputs, exclude Markdown from ruff
 
 Implements PG-18 (ADR 0037) and PG-19 (ADR 0038) from the W1-T01 review.
 
