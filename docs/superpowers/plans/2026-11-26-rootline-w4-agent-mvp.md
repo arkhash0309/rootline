@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 4: Minimal End-to-End Version
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** An alert in the local cluster automatically creates an incident, an agent worker investigates it through the MCP servers with Claude models, and a report appears in the API; the eval runner replays snapshots offline and produces baseline and `routed` numbers on ≥ 40 dev scenarios.
 
@@ -15,6 +15,20 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - **Read the claude-api skill first** (AGT-052): load the `claude-api` skill and read `python/claude-api/README.md`, `python/claude-api/tool-use.md` (§ Structured Outputs) and `python/claude-api/batches.md` before writing `rootline_llm`. Do not guess SDK signatures. PG-1, PG-2, PG-14, PG-15 apply.
 - **Spending:** every step that calls Anthropic is marked **[PAID]** with its expected cost and requires the owner's go-ahead in the session (O-10). All unit and integration tests use the `scripted` backend or fakes and cost USD 0.
 - Week 4 acceptance (MS-001): an alert-triggered investigation completes with a report in the local cluster; dev-split baseline and `routed` numbers on ≥ 40 dev scenarios recorded in `wiki/eval/results.md`; TST-AGT-* and TST-LLM-* pass; ≥ 250 scenarios captured.
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 4); `uv run python scripts/swarm_schedule.py table --week 4` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W4-P1 | parallel | — | W4-T01 (`feat/w4-llm-core`); W4-T04 (`feat/w4-agent-schemas`); W4-T05 (`feat/w4-db-core`) | W4-T01 steps 8 → W4-S2 |
+| W4-P2 | parallel | W4-P1 | W4-T02 (`feat/w4-llm-budget-batch`); W4-T03 (`feat/w4-tracing`); W4-T06 (`feat/w4-api-foundation`); W4-T09 (`feat/w4-prompts`) | W4-T03 steps 3 → W4-S2 |
+| W4-P3 | parallel | W4-P2 | W4-T07 (`feat/w4-api-core`); W4-T08 (`feat/w4-agent-io`) | — |
+| W4-S1 | sequential | W4-P3 | W4-T10 (`feat/w4-agent-graph`) | — |
+| W4-P4 | parallel | W4-S1 | W4-T11 (`feat/w4-agent-worker`); W4-T12 (`feat/w4-eval-runner`) | — |
+| W4-S2 | sequential | W4-P4 | W4-T13 (`feat/w4-api-agent-deploy`); W4-T14 (`feat/w4-pilots-smoke`); W4-T15 (no branch) | — |
 
 ---
 
@@ -430,7 +444,7 @@ class AnthropicBackend:
 ### Task W4-T08: Agent guard, tool client and recorder
 
 **Requirement IDs:** AGT-002, AGT-005, AGT-080, AGT-081, AGT-083, AGT-034, AGT-040, SEC-042–044, TST-AGT-015.
-**Depends on:** W4-T04, W3-T13, W4-T07. **Branch:** `feat/w4-agent-io`.
+**Depends on:** W4-T04, W3-T13. Runs in parallel with W4-T07 (stage W4-P3): `ApiRecorder` is written against the API-050 contract, and the contract test below proves the two agree after integration. **Branch:** `feat/w4-agent-io`.
 
 **Files:**
 - Modify: `services/agent/rootline_agent/guard.py` (add `wrap_data`, `DATA_RULE`)
@@ -475,6 +489,7 @@ def test_data_rule_verbatim() -> None:
 ```
 
 Escaping is case-insensitive: replace `re.sub(r"(?i)<(/?)data", lambda m: "&lt;" + m.group(1) + "data", content)`. Source attribute values are restricted to `^[a-z]+(:[a-z_]+)?$`.
+- [ ] **Step 1b: Contract test** — `tests/repo/test_recorder_contract.py` (marker `integration_contract`, overview §7.7 G6): for every HTTP call `ApiRecorder` makes (method, path template, request body model), assert the path and method exist in `services/api/openapi.json` and the body validates against the operation's request schema. Inside the parallel worktree run tests with `-m "not integration_contract"`; the integration gate runs it.
 - [ ] **Step 2: Tool client tests** — against the in-process fixture snapshot: routing per `TOOL_SERVER`; `ToolOutcome.ok` False with structured error envelope on `invalid_argument`; durations ≥ 0; `tool_call_id` is a fresh ULID per call.
 - [ ] **Step 3: Token provider tests (SEC-044)** — fakes for exchanger/client-credentials: delegated happy path performs exactly three exchanges and clears delegation; expired subject token → system mode + event `delegation.status` reason `subject_token_expired`; exchange HTTP 400 → system mode reason `exchange_failed`; cached token reused until `exp − 30 s`, refreshed after.
 - [ ] **Step 4: Recorder tests** — `ApiRecorder` with `respx`: each method hits the right internal endpoint with the right body; `JsonlRecorder` files contain one JSON object per line.
@@ -681,6 +696,8 @@ LLM call construction for every node: `LLMCall(node, model, effort, system=promp
 **Requirement IDs:** ARC-001 (api, agent), ARC-030, ARC-031, SEC-033, SEC-100 (anthropic, langfuse, job-token-key, alertmanager-webhook copy), API-061, §5.6.1.
 **Depends on:** W4-T07, W4-T11. **Branch:** `feat/w4-api-agent-deploy`.
 
+**Smoke registration (overview §7.7):** creates `tests/smoke/api.yaml` (`http` check namespace `rootline`, Service `api`, port 80, path `/readyz`, `expect_status: 200`) and `tests/smoke/agent.yaml` (`http` check Service `agent`, port 80, path `/readyz`, `expect_status: 200`); G12 must pass.
+
 - [ ] **Step 1: Images** — `services/api/Dockerfile` (W2-T11 pattern; entry `rootline-api` = uvicorn `rootline_api.app:create_app --factory` on 8080; still contains Alembic files for `migrate`), `services/agent/Dockerfile` (entry `rootline-agent`; the image also contains `prompts/` at `/app/prompts` and `services/agent/rootline_agent/configs.yaml`).
 - [ ] **Step 2: Chart** — `api` Deployment (1 replica local / 2 gke), SA `api` with projected Keycloak token, env from `pg-rootline-api`, `alertmanager-webhook` (ExternalSecret in `rootline` via store `observability-reader`, W1-T13), `job-token-key` (generator `password-43`), settings env (`KEYCLOAK_ISSUER`, `JWKS_URL`, `AUTO_INVESTIGATE=true`, `CLUSTER_BUDGET_USD={{ .Values.llm.clusterBudgetUsd }}`, `CONSOLE_BASE_URL=https://console.{{D}}`, `LANGFUSE_HOST`); `agent` Deployment (2 replicas, SA `agent`, `automountServiceAccountToken: false`, projected Keycloak token, env `ROOTLINE_LLM_BACKEND=anthropic`, `ANTHROPIC_API_KEY` from `anthropic`, Langfuse keys from `langfuse`, `DATABASE_URL` from `pg-rootline-agent`, `JOB_TOKEN_KEY` from `job-token-key`, MCP endpoints `http://mcp-<x>.rootline.svc.cluster.local/mcp`, `API_BASE=http://api.rootline.svc.cluster.local`, `ROOTLINE_DELEGATION_MODE`, `KEYCLOAK_TOKEN_URL=https://auth.{{D}}/realms/rootline/protocol/openid-connect/token`, budgets defaults); ExternalSecrets `anthropic`, `langfuse` from store `bootstrap`. Services `api` and `agent` (agent Service only for metrics).
 - [ ] **Step 3: Deploy** — `task images`, sync, `task doctor` memory check; if > 9.5 GiB apply ARC-031 in order and record.
@@ -698,6 +715,7 @@ LLM call construction for every node: `LLMCall(node, model, effort, system=promp
 - [ ] **Step 2 [PAID ≈ USD 1.40]: `rootline-eval pilot-cost --config routed --n 10` and `--config all-small`** — prints mean/p50/p95 cost and token breakdown, writes `wiki/eval/results.md` § Pilot. Check AGT-063: `cache_read_input_tokens > 0` on the second and later large-model calls in ≥ 1 of 5 investigations; if 0 in all 5, switch to independent per-node calls (config flag `llm.conversation_mode: independent`) and write an ADR.
 - [ ] **Step 3: `rootline-eval pilot-local` (free)** — with `task stop` and Ollama running: for each candidate tag in AGT-055 order (`qwen3:8b`, `qwen3.5:9b`, `gemma4:e4b`, `gpt-oss:20b`): `ollama pull` (skip and record if the tag does not exist), run the 10 scenarios with config `local` and that tag, measure schema-valid rate over all node calls, top-1, mean tokens/s; choose per AGT-055; write `wiki/eval/local-pilot.md` (table per candidate) and set the tag in `configs.yaml`.
 - [ ] **Step 4: Smoke set** — `eval/smoke.yaml`: 10 captured dev scenarios covering all 7 categories and 3 channels plus exactly 1 injection scenario; chosen by `rootline-eval dataset pick --split dev --n 10 --cover categories,channels --include-adversarial injection:1`; commit.
+- [ ] **Step 4b: Replay regression baseline (free, overview §7.7 G10)** — `rootline-eval baseline --split smoke --write-regression eval/baselines/baseline-smoke.json` writes `{"git_sha": ..., "results": {<scenario_id>: {"predicted_entity", "category", "action", "confidence"}}}` from the deterministic non-LLM baseline; commit it. From now on the integration gate's G10 compares against this file.
 - [ ] **Step 5 [PAID ≈ USD 0.12]: `rootline-eval baseline-smoke --write`** — runs the smoke set with `all-small` (interactive), writes `eval/baselines/smoke-all-small.json` `{run_id, top1_correct_count, cost_mean, n, created_at, git_sha}`.
 - [ ] **Step 6: Taskfile and CI** — tasks `eval:smoke` (`uv run rootline-eval run --config all-small --split smoke --gate eval/baselines/smoke-all-small.json`) and `eval:sweep` (`uv run rootline-eval run {{.CLI_ARGS}}`); `--gate` evaluates EVL-081 and exits 1 on failure with a summary. `.github/workflows/eval-smoke.yml`: trigger per EVL-080 paths; job `smoke` with `if: vars.GCP_WIF_PROVIDER != ''` (PG-7) and a second job `notice` with the inverse condition that prints "eval smoke gate inactive until W7-T01 (PG-7); run task eval:smoke locally and paste the summary into the PR"; the active job (W7) authenticates with `google-github-actions/auth`, downloads `gs://<artifacts>/snapshots/v1/` objects listed in `eval/smoke.yaml` with `actions/cache` keyed by `hashFiles('eval/smoke.yaml')`, runs with `ANTHROPIC_API_KEY_CI` → env `ROOTLINE_HOST_ANTHROPIC_API_KEY`, `ROOTLINE_LLM_LEDGER_FRESH_CI=1` (per-run cap 0.50, EVL-082), and fails the check `eval / smoke` on gate failure.
 - [ ] **Step 7: Commit** `feat(eval): add pilots, smoke set, smoke baseline and smoke gate`.

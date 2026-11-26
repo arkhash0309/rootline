@@ -1,0 +1,462 @@
+# Rootline execution schedule (overview §7). Single source of truth for stage order.
+# Each wave file's "Execution schedule" table mirrors this file; scripts/swarm_schedule.py validate checks both.
+# Glob syntax: gitignore-style, relative to the repository root; ** matches across directories.
+version: 1
+max_parallel_implementers: 3
+always_allowed:            # overview §7.4
+  - wiki/log.md
+  - uv.lock
+  - apps/console/package-lock.json
+  - deploy/root/files/versions.yaml
+  - .github/versions.env
+  - infra/terraform/*/versions.auto.tf
+  - services/api/openapi.json
+  - apps/console/lib/api-types.ts
+  - prompts/HASHES.json
+  - "**/__init__.py"                 # empty package markers only (check_ownership.py verifies size 0 or docstring-only)
+  - "**/pyproject.toml"              # dependency arrays only; union-merge rule (§7.4)
+  - apps/console/package.json        # dependency maps only; union-merge rule (§7.4)
+
+weeks:
+  - week: 1
+    stages:
+      - id: W1-S1
+        mode: sequential
+        after: []
+        tasks: [{id: W1-T01, branch: feat/w1-repo-skeleton}]
+      - id: W1-S2
+        mode: sequential
+        after: [W1-S1]
+        tasks:
+          - {id: W1-T16, branch: feat/w1-swarm-tooling}
+          - {id: W1-T08, branch: docs/w1-env-repo}
+      - id: W1-P1
+        mode: parallel
+        after: [W1-S2]
+        tasks:
+          - id: W1-T02
+            branch: feat/w1-versions
+            owns: [versions.yaml, scripts/versions_lib.py, scripts/check_versions.py, scripts/render_versions.py, tests/repo/test_versions.py]
+            deferred_steps: [8]
+            deferred_to: W1-S3
+          - id: W1-T03
+            combined_with: [W1-T04]
+            branch: feat/w1-wiki
+            owns: [wiki/**, scripts/wiki_lint.py, tests/repo/test_wiki_lint.py, docs/superpowers/specs/2026-11-25-rootline-design.md]
+            excludes: [wiki/runbooks/local-up.md]
+      - id: W1-P2
+        mode: parallel
+        after: [W1-P1]
+        tasks:
+          - id: W1-T05
+            branch: feat/w1-wiki-skill
+            owns: [.claude/skills/rootline-wiki/**, tests/repo/test_skill.py]
+            pre_steps: [1]
+            deferred_steps: [4]
+            deferred_to: W1-S3
+          - id: W1-T06
+            branch: feat/w1-taskfile
+            owns: [Taskfile.yml, scripts/doctor.py, scripts/run_if_exists.py, scripts/lint.py, .env.example, tests/repo/test_doctor.py]
+          - id: W1-T07
+            branch: feat/w1-py-common
+            owns: [libs/py-common/**]
+      - id: W1-P3
+        mode: parallel
+        after: [W1-P2]
+        tasks:
+          - id: W1-T09
+            branch: feat/w1-workload-render
+            owns: [deploy/upstream/otel-demo/**, scripts/render_workload.py, scripts/workload_transforms.py, tests/repo/test_workload_render.py, tests/repo/fixtures/**, wiki/components/workload.md, tests/registry/TST-WKL-001--W1-T09.yaml]
+            deferred_steps: [6, 7]
+            deferred_to: W1-S3
+          - id: W1-T10
+            branch: feat/w1-gitops-root
+            owns: [infra/k3d/**, deploy/root/**, deploy/charts/namespaces/**, deploy/charts/platform-config/**, deploy/charts/rootline/**, deploy/upstream/**, scripts/render_manifests.py, tests/repo/test_root_chart.py, wiki/components/argocd.md, wiki/components/cert-manager.md, wiki/components/external-secrets.md, wiki/components/traefik.md, wiki/components/kyverno.md, wiki/components/chaos-mesh.md]
+            excludes: [deploy/upstream/otel-demo/**]
+          - id: W1-T11
+            branch: feat/w1-observability-postgres
+            owns: [deploy/charts/observability/**, deploy/charts/postgres/**, scripts/render_versions.py, tests/repo/test_observability_values.py, wiki/components/kube-prometheus-stack.md, wiki/components/loki.md, wiki/components/tempo.md, wiki/components/otel-collector.md, wiki/components/postgres.md]
+          - id: W1-T14
+            branch: feat/w1-ci
+            owns: [.github/workflows/ci.yml, .github/rulesets/**, scripts/ci_changed_files.py, wiki/runbooks/github-apps.md]
+            deferred_steps: [2, 3]
+            deferred_to: W1-S3
+      - id: W1-S3
+        mode: sequential
+        after: [W1-P3]
+        tasks:
+          - {id: W1-T12, branch: feat/w1-task-up}
+          - {id: W1-T13, branch: feat/w1-baseline-gate}
+          - {id: W1-T15, branch: null}
+
+  - week: 2
+    stages:
+      - id: W2-S1
+        mode: sequential
+        after: []
+        tasks: [{id: W2-T01, branch: feat/w2-schemas}]
+      - id: W2-P1
+        mode: parallel
+        after: [W2-S1]
+        tasks:
+          - id: W2-T02
+            branch: feat/w2-db-lab-audit
+            owns: [services/api/alembic.ini, services/api/migrations/**, services/api/tests/test_migrations.py, services/api/tests/conftest.py, libs/py-common/rootline_common/audit.py, libs/py-common/rootline_common/db.py, libs/py-common/tests/test_audit.py, libs/py-common/tests/conftest.py, tests/fixtures/pg.py, tests/registry/TST-DB-001--W2-T02.yaml, tests/registry/TST-SEC-035--W2-T02.yaml, wiki/components/postgres.md]
+          - id: W2-T03
+            branch: feat/w2-algorithms
+            owns: [services/mcp-telemetry/**, libs/py-mcpkit/rootline_mcpkit/windows.py, tests/registry/TST-MCP-020--W2-T03.yaml, wiki/components/mcp-telemetry.md]
+          - id: W2-T04
+            branch: feat/w2-redaction
+            owns: [libs/py-mcpkit/rootline_mcpkit/redact.py, libs/py-mcpkit/tests/test_redact.py, tests/registry/TST-SEC-030--W2-T04.yaml]
+          - id: W2-T05
+            branch: feat/w2-catalog
+            owns: [services/faultlab/rootline_faultlab/catalog.yaml, services/faultlab/rootline_faultlab/catalog.py, services/faultlab/rootline_faultlab/commit_messages.yaml, services/faultlab/rootline_faultlab/payloads.yaml, services/faultlab/tests/test_catalog.py, services/faultlab/tests/test_commit_messages.py, services/faultlab/tests/test_payloads.py, services/agent/rootline_agent/guard.py, services/agent/tests/test_guard_detect.py, tests/registry/TST-LAB-005--W2-T05.yaml, tests/registry/TST-LAB-007--W2-T05.yaml]
+      - id: W2-P2
+        mode: parallel
+        after: [W2-P1]
+        tasks:
+          - id: W2-T06
+            branch: feat/w2-scenario-generator
+            owns: [services/faultlab/rootline_faultlab/generate.py, services/faultlab/rootline_faultlab/cli.py, services/faultlab/tests/test_generate.py, eval/scenarios/**, tests/registry/TST-LAB-001--W2-T06.yaml]
+          - id: W2-T07
+            branch: feat/w2-github-gitops
+            owns: [libs/py-common/rootline_common/github.py, libs/py-common/rootline_common/gitops.py, libs/py-common/rootline_common/yamlio.py, libs/py-common/tests/test_github.py, libs/py-common/tests/test_gitops.py, scripts/workload_transforms.py, services/faultlab/rootline_faultlab/injectors/git.py, services/faultlab/tests/test_git_mutations.py, services/faultlab/tests/fixtures/workload/**, tests/fixtures/keys.py, wiki/runbooks/github-apps.md]
+            deferred_steps: [4]
+            deferred_to: W2-S2
+          - id: W2-T08
+            branch: feat/w2-k8s-injectors
+            owns: [libs/py-common/rootline_common/argocd.py, libs/py-common/tests/test_argocd.py, services/faultlab/rootline_faultlab/k8s.py, services/faultlab/rootline_faultlab/argocd_accounts.py, services/faultlab/rootline_faultlab/injectors/flag.py, services/faultlab/rootline_faultlab/injectors/chaos.py, services/faultlab/rootline_faultlab/injectors/load.py, services/faultlab/rootline_faultlab/injectors/payload_job.py, services/faultlab/tests/test_chaos_manifests.py, services/faultlab/tests/test_flag_patch.py, services/faultlab/tests/golden/**, deploy/charts/argocd-accounts/**, deploy/upstream/argo-cd/**, deploy/root/values.yaml, deploy/root/templates/**, tests/repo/test_root_chart.py]
+            deferred_steps: [7]
+            deferred_to: W2-S2
+      - id: W2-S2
+        mode: sequential
+        after: [W2-P2]
+        tasks:
+          - {id: W2-T09, branch: feat/w2-snapshots}
+          - {id: W2-T10, branch: feat/w2-orchestrator}
+          - {id: W2-T11, branch: feat/w2-faultlab-deploy}
+          - {id: W2-T12, branch: docs/w2-capture-runbooks}
+          - {id: W2-T13, branch: null}
+
+  - week: 3
+    stages:
+      - id: W3-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W3-T01
+            branch: feat/w3-keycloak
+            owns: [deploy/charts/keycloak/**, deploy/charts/platform-config/templates/externalsecrets-keycloak.yaml, deploy/root/values.yaml, tests/repo/test_realm.py, wiki/components/keycloak.md, wiki/components/keycloak-config.md]
+            deferred_steps: [4]
+            deferred_to: W3-S1
+          - id: W3-T02
+            branch: feat/w3-auth-lib
+            owns: [libs/py-common/rootline_common/auth/**, libs/py-common/tests/auth/**, tests/fixtures/keys.py, tests/fixtures/jwks.py, tests/registry/TST-SEC-011--W3-T02.yaml, tests/registry/TST-SEC-012--W3-T02.yaml, tests/registry/TST-SEC-013--W3-T02.yaml, tests/registry/TST-SEC-015--W3-T02.yaml, tests/registry/TST-SEC-020--W3-T02.yaml]
+      - id: W3-P2
+        mode: parallel
+        after: [W3-P1]
+        tasks:
+          - id: W3-T03
+            branch: feat/w3-keycloak-tests
+            owns: [tests/integration/keycloak/**, tests/registry/TST-SEC-005--W3-T03.yaml, tests/registry/TST-SEC-010--W3-T03.yaml, tests/registry/TST-SEC-014--W3-T03.yaml]
+            deferred_steps: [4]
+            deferred_to: W3-S2
+          - id: W3-T05
+            branch: feat/w3-mcpkit
+            owns: [libs/py-mcpkit/**, tests/fixtures/make_snapshot.py, tests/fixtures/snapshot/**]
+            excludes: [libs/py-mcpkit/rootline_mcpkit/redact.py, libs/py-mcpkit/tests/test_redact.py]
+          - id: W3-T11
+            branch: feat/w3-faultlab-api
+            owns: [services/faultlab/rootline_faultlab/api.py, services/faultlab/rootline_faultlab/cli.py, services/faultlab/tests/test_api.py, deploy/charts/rootline/templates/faultlab/deployment.yaml]
+      - id: W3-P3
+        mode: parallel
+        after: [W3-P2]
+        tasks:
+          - id: W3-T06
+            branch: feat/w3-mcp-telemetry
+            owns: [services/mcp-telemetry/**, services/faultlab/rootline_faultlab/capture/queries.py, tests/registry/TST-MCP-001--W3-T06.yaml, tests/registry/TST-MCP-005--W3-T06.yaml, wiki/components/mcp-telemetry.md]
+            deferred_steps: [4]
+            deferred_to: W3-S1
+          - id: W3-T07
+            branch: feat/w3-mcp-k8s
+            owns: [services/mcp-k8s/**, tests/registry/TST-MCP-001--W3-T07.yaml, tests/registry/TST-MCP-005--W3-T07.yaml, wiki/components/mcp-k8s.md]
+            deferred_steps: [3]
+            deferred_to: W3-S1
+          - id: W3-T08
+            branch: feat/w3-mcp-gitops-read
+            owns: [services/mcp-gitops/**, tests/registry/TST-MCP-001--W3-T08.yaml, wiki/components/mcp-gitops.md]
+            deferred_steps: [3]
+            deferred_to: W3-S1
+      - id: W3-P4
+        mode: parallel
+        after: [W3-P3]
+        tasks:
+          - id: W3-T09
+            branch: feat/w3-parity
+            owns: [services/faultlab/rootline_faultlab/capture/parity.py, services/faultlab/rootline_faultlab/orchestrator.py, libs/py-mcpkit/rootline_mcpkit/parity.py, libs/py-mcpkit/tests/test_parity_compare.py, tests/parity/**, tests/registry/TST-MCP-010--W3-T09.yaml]
+            deferred_steps: [5]
+            deferred_to: W3-S1
+          - id: W3-T12
+            branch: feat/w3-policies
+            owns: [deploy/charts/rootline/templates/mcp-k8s/rbac.yaml, deploy/charts/rootline/templates/netpol/**, deploy/charts/platform-config/templates/kyverno.yaml, policies/kyverno/**, tests/repo/test_rbac_netpol.py, wiki/security/threat-model.md]
+            deferred_steps: [4]
+            deferred_to: W3-S3
+      - id: W3-S1
+        mode: sequential
+        after: [W3-P4]
+        tasks:
+          - {id: W3-T04, branch: feat/w3-federated-auth-test}
+      - id: W3-S2
+        mode: sequential
+        after: [W3-S1]
+        tasks:
+          - {id: W3-T10, branch: feat/w3-github-apps}
+          - {id: W3-T13, branch: feat/w3-mcp-deploy}
+      - id: W3-S3
+        mode: sequential
+        after: [W3-S2]
+        tasks:
+          - {id: W3-T14, branch: null}
+
+  - week: 4
+    stages:
+      - id: W4-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W4-T01
+            branch: feat/w4-llm-core
+            owns: [libs/py-llm/**, tests/registry/TST-LLM-001--W4-T01.yaml]
+            excludes: [libs/py-llm/rootline_llm/budget.py, libs/py-llm/rootline_llm/cli.py, libs/py-llm/rootline_llm/backends/batch.py, libs/py-llm/rootline_llm/tracing.py]
+            deferred_steps: [8]
+            deferred_to: W4-S2
+          - id: W4-T04
+            branch: feat/w4-agent-schemas
+            owns: [libs/py-schemas/rootline_schemas/agent.py, libs/py-schemas/tests/test_agent_schemas.py]
+          - id: W4-T05
+            branch: feat/w4-db-core
+            owns: [services/api/migrations/versions/0002_core.py, services/api/migrations/versions/0003_eval.py, services/api/tests/test_migrations.py, services/api/tests/test_grants.py]
+      - id: W4-P2
+        mode: parallel
+        after: [W4-P1]
+        tasks:
+          - id: W4-T02
+            branch: feat/w4-llm-budget-batch
+            owns: [libs/py-llm/rootline_llm/budget.py, libs/py-llm/rootline_llm/cli.py, libs/py-llm/rootline_llm/backends/batch.py, libs/py-llm/tests/test_budget.py, libs/py-llm/tests/test_batch.py, tests/registry/TST-LLM-005--W4-T02.yaml, tests/registry/TST-LLM-010--W4-T02.yaml]
+          - id: W4-T03
+            branch: feat/w4-tracing
+            owns: [libs/py-llm/rootline_llm/tracing.py, libs/py-llm/tests/test_tracing.py]
+            deferred_steps: [3]
+            deferred_to: W4-S2
+          - id: W4-T06
+            branch: feat/w4-api-foundation
+            owns: [services/api/rootline_api/**, services/api/tests/test_auth_deps.py, services/api/tests/test_ratelimit.py, services/api/tests/test_idempotency.py, services/api/tests/test_pagination.py, services/api/tests/test_crypto.py, libs/py-common/rootline_common/crypto.py, scripts/check_contracts.py, Taskfile.yml]
+          - id: W4-T09
+            branch: feat/w4-prompts
+            owns: [prompts/**, services/agent/rootline_agent/prompts.py, services/agent/tests/test_prompts.py, tests/registry/TST-AGT-020--W4-T09.yaml]
+      - id: W4-P3
+        mode: parallel
+        after: [W4-P2]
+        tasks:
+          - id: W4-T07
+            branch: feat/w4-api-core
+            owns: [services/api/rootline_api/routers/**, services/api/rootline_api/services/**, services/api/rootline_api/app.py, services/api/tests/test_grouping.py, services/api/tests/test_hooks.py, services/api/tests/test_investigations.py, services/api/tests/test_internal_agent.py, services/api/tests/test_sse.py, services/api/tests/test_budget.py, libs/py-schemas/rootline_schemas/api.py, tests/registry/TST-API-001--W4-T07.yaml, tests/registry/TST-API-005--W4-T07.yaml]
+          - id: W4-T08
+            branch: feat/w4-agent-io
+            owns: [services/agent/rootline_agent/guard.py, services/agent/rootline_agent/tools.py, services/agent/rootline_agent/recorder.py, services/agent/rootline_agent/tokens.py, services/agent/tests/test_guard_wrap.py, services/agent/tests/test_tools.py, services/agent/tests/test_recorder.py, services/agent/tests/test_tokens.py, tests/repo/test_recorder_contract.py, tests/registry/TST-AGT-015--W4-T08.yaml]
+      - id: W4-S1
+        mode: sequential
+        after: [W4-P3]
+        tasks: [{id: W4-T10, branch: feat/w4-agent-graph}]
+      - id: W4-P4
+        mode: parallel
+        after: [W4-S1]
+        tasks:
+          - id: W4-T11
+            branch: feat/w4-agent-worker
+            owns: [services/agent/rootline_agent/worker.py, services/agent/rootline_agent/jobs.py, services/agent/rootline_agent/main.py, services/agent/tests/test_worker.py, tests/registry/TST-AGT-030--W4-T11.yaml]
+          - id: W4-T12
+            branch: feat/w4-eval-runner
+            owns: [eval/runner/**, eval/test-half.yaml, services/faultlab/rootline_faultlab/capture/writer.py, services/faultlab/tests/test_writer.py]
+      - id: W4-S2
+        mode: sequential
+        after: [W4-P4]
+        tasks:
+          - {id: W4-T13, branch: feat/w4-api-agent-deploy}
+          - {id: W4-T14, branch: feat/w4-pilots-smoke}
+          - {id: W4-T15, branch: null}
+
+  - week: 5
+    stages:
+      - id: W5-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W5-T01
+            branch: feat/w5-policy
+            owns: [policies/opa/**, tests/registry/TST-POL-001--W5-T01.yaml]
+          - id: W5-T04
+            branch: feat/w5-api-proposals
+            owns: [services/api/**, tests/registry/TST-POL-020--W5-T04.yaml, tests/registry/TST-POL-030--W5-T04.yaml]
+      - id: W5-P2
+        mode: parallel
+        after: [W5-P1]
+        tasks:
+          - id: W5-T02
+            branch: feat/w5-render-and-input
+            owns: [libs/py-common/rootline_common/gitops_render.py, libs/py-common/tests/test_gitops_render.py, services/gate/**, eval/runner/rootline_eval/scoring.py, eval/runner/tests/test_scoring_policy.py]
+          - id: W5-T06
+            branch: feat/w5-memory
+            owns: [services/api/migrations/versions/0005_memory_vector.py, services/api/rootline_api/routers/memory.py, services/api/rootline_api/services/memory.py, services/api/tests/test_memory.py, services/api/Dockerfile, libs/py-common/rootline_common/embed.py, libs/py-common/tests/test_embed.py, services/agent/rootline_agent/memory.py, services/agent/rootline_agent/nodes/triage.py, services/agent/tests/test_memory_triage.py, eval/runner/rootline_eval/memory.py, eval/runner/tests/test_memory_isolation.py, deploy/charts/postgres/**, tests/fixtures/pg.py]
+          - id: W5-T07
+            branch: feat/w5-audit-verify
+            owns: [services/api/rootline_api/cli.py, services/api/rootline_api/routers/audit.py, services/api/rootline_api/services/audit_verify.py, services/api/tests/test_audit_verify.py, tests/registry/TST-SEC-035--W5-T07.yaml]
+      - id: W5-P3
+        mode: parallel
+        after: [W5-P2]
+        tasks:
+          - id: W5-T03
+            branch: feat/w5-propose-fix
+            owns: [services/mcp-gitops/**, services/agent/rootline_agent/nodes/plan_fix.py, services/agent/rootline_agent/nodes/verify.py, services/agent/tests/test_plan_fix.py, services/api/rootline_api/routers/internal_gate.py]
+          - id: W5-T05
+            branch: feat/w5-gate
+            owns: [services/gate/**]
+      - id: W5-S1
+        mode: sequential
+        after: [W5-P3]
+        tasks:
+          - {id: W5-T08, branch: feat/w5-gate-deploy}
+          - {id: W5-T09, branch: null}
+
+  - week: 6
+    stages:
+      - id: W6-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W6-T01
+            branch: feat/w6-console-bff
+            owns: [apps/console/**, services/api/migrations/versions/0006_bff.py, scripts/check_contracts.py, tests/registry/TST-SEC-025--W6-T01.yaml]
+          - id: W6-T07
+            branch: feat/w6-eval-api
+            owns: [eval/runner/rootline_eval/export.py, eval/runner/rootline_eval/cli.py, eval/runner/tests/test_export.py, services/api/rootline_api/routers/eval.py, services/api/rootline_api/services/eval_import.py, services/api/tests/test_eval_import.py]
+      - id: W6-S1
+        mode: sequential
+        after: [W6-P1]
+        tasks: [{id: W6-T02, branch: feat/w6-incidents-ui}]
+      - id: W6-P2
+        mode: parallel
+        after: [W6-S1]
+        tasks:
+          - id: W6-T03
+            branch: feat/w6-live-investigation
+            owns: ["apps/console/app/(app)/investigations/**", apps/console/components/investigation/**, apps/console/lib/sse.ts, apps/console/lib/investigationReducer.ts, apps/console/tests/ui/live-investigation.test.tsx, apps/console/tests/fixtures/**, tests/registry/TST-UI-001--W6-T03.yaml]
+          - id: W6-T04
+            branch: feat/w6-proposal-ui
+            owns: ["apps/console/app/(app)/proposals/**", apps/console/components/proposal/**, apps/console/tests/ui/proposal.test.tsx]
+          - id: W6-T05
+            branch: feat/w6-lab-eval-ui
+            owns: ["apps/console/app/(app)/lab/**", "apps/console/app/(app)/eval/**", apps/console/components/charts/**, apps/console/components/lab/**, apps/console/tests/ui/lab.test.tsx, apps/console/tests/ui/eval.test.tsx, apps/console/tests/ui/charts.test.tsx, services/api/rootline_api/routers/lab.py, services/api/tests/test_lab_api.py]
+          - id: W6-T06
+            branch: feat/w6-audit-ui
+            owns: ["apps/console/app/(app)/audit/**", apps/console/components/audit/**, apps/console/components/Banners.tsx, apps/console/tests/ui/audit.test.tsx, services/api/rootline_api/routers/me.py, services/api/tests/test_me_banners.py]
+      - id: W6-S2
+        mode: sequential
+        after: [W6-P2]
+        tasks:
+          - {id: W6-T08, branch: feat/w6-console-deploy}
+          - {id: W6-T09, branch: feat/w6-e2e-env}
+          - {id: W6-T10, branch: feat/w6-e2e-test}
+
+  - week: 7
+    stages:
+      - id: W7-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W7-T01
+            branch: feat/w7-tf-persistent
+            owns: [infra/terraform/persistent/**, scripts/gke_bootstrap.py, scripts/render_versions.py, Taskfile.yml, wiki/runbooks/gcp-bootstrap.md]
+            pre_steps: [1]
+            deferred_steps: [3, 4]
+            deferred_to: W7-S1
+          - id: W7-T07
+            branch: feat/w7-eval-complete
+            owns: [eval/runner/**, eval/sweeps/**, prompts/judge_explanation.v1.md, services/mcp-telemetry/rootline_mcp_telemetry/ablation.py, services/mcp-telemetry/tests/test_ablation.py, services/agent/rootline_agent/nodes/verify.py, services/agent/tests/test_no_verifier.py]
+      - id: W7-P2
+        mode: parallel
+        after: [W7-P1]
+        tasks:
+          - id: W7-T02
+            branch: feat/w7-tf-cluster
+            owns: [infra/terraform/cluster/**, deploy/upstream/**/values-gke.yaml, deploy/charts/**/values-gke.yaml, deploy/charts/platform-config/templates/letsencrypt.yaml, deploy/charts/platform-config/templates/eso-gcp.yaml]
+          - id: W7-T03
+            branch: feat/w7-release
+            owns: [.github/workflows/release.yml, scripts/build_images.py]
+            deferred_steps: [2]
+            deferred_to: W7-S1
+          - id: W7-T10
+            branch: feat/w7-calibrate-t0
+            owns: [eval/runner/rootline_eval/calibrate.py, eval/runner/tests/test_calibrate.py]
+            deferred_steps: [2, 3]
+            deferred_to: W7-S1
+      - id: W7-P3
+        mode: parallel
+        after: [W7-P2]
+        tasks:
+          - id: W7-T04
+            branch: feat/w7-kyverno-verify
+            owns: [policies/kyverno/verify-rootline-images.yaml, policies/kyverno/tests/verify-rootline-images/**]
+            deferred_steps: [2]
+            deferred_to: W7-S1
+          - id: W7-T05
+            branch: feat/w7-gke-tasks
+            owns: [scripts/gke_up.py, scripts/gke_down.py, scripts/seed_export.py, deploy/charts/demo-seed/**, deploy/values/showcase-incidents.yaml, Taskfile.yml, tests/repo/test_gke_scripts.py]
+          - id: W7-T09
+            branch: feat/w7-itbench
+            owns: [eval/runner/rootline_eval/itbench/**, eval/runner/tests/test_itbench.py]
+            deferred_steps: [3]
+            deferred_to: W7-S1
+      - id: W7-S1
+        mode: sequential
+        after: [W7-P3]
+        tasks:
+          - {id: W7-T06, branch: docs/w7-gke-runbooks}
+          - {id: W7-T08, branch: null}
+
+  - week: 8
+    stages:
+      - id: W8-P1
+        mode: parallel
+        after: []
+        tasks:
+          - id: W8-T04
+            branch: docs/w8-threat-model
+            owns: [wiki/security/threat-model.md]
+          - id: W8-T05
+            branch: feat/w8-publish-hf
+            owns: [eval/runner/rootline_eval/publish_hf.py, eval/runner/rootline_eval/cli.py, eval/runner/tests/test_publish_hf.py, tests/registry/TST-SEC-031--W8-T05.yaml]
+            deferred_steps: [3]
+            deferred_to: W8-S2
+      - id: W8-S1
+        mode: sequential
+        after: [W8-P1]
+        tasks:
+          - {id: W8-T01, branch: feat/w8-dev-fixes}
+          - {id: W8-T02, branch: null}
+      - id: W8-P2
+        mode: parallel
+        after: [W8-S1]
+        tasks:
+          - id: W8-T03
+            branch: docs/w8-cost-ledger
+            owns: [wiki/cost-ledger.md]
+          - id: W8-T06
+            branch: docs/w8-writeup
+            owns: [README.md, docs/writeup/**, wiki/runbooks/interview-demo.md]
+            deferred_steps: [5]
+            deferred_to: W8-S2
+      - id: W8-S2
+        mode: sequential
+        after: [W8-P2]
+        tasks: [{id: W8-T07, branch: null}]

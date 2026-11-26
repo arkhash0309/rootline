@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 6: Console and End-to-End Test
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. For UI work also load `frontend-design:frontend-design` and, for charts, the `dataviz` skill (UI-040).
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking. For UI work also load `frontend-design:frontend-design` and, for charts, the `dataviz` skill (UI-040).
 
 **Goal:** A Next.js console with a secure BFF (PKCE, encrypted server-side sessions, CSRF, passkey step-up) and every UI-010 page, including the live investigation screen and the proposal screen; eval API endpoints and import; and the end-to-end test TST-E2E-001 running in CI on kind.
 
@@ -16,6 +16,18 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - API types only from `services/api/openapi.json` (UI-001). No hand-written duplicates.
 - Accessibility WCAG 2.2 AA (UI-051); states loading/empty/error everywhere (UI-052).
 - Week 6 acceptance (MS-001): TST-UI-001/010, TST-SEC-025 pass; TST-E2E-001 passes (or the TST-071 fallback is invoked).
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 6); `uv run python scripts/swarm_schedule.py table --week 6` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W6-P1 | parallel | — | W6-T01 (`feat/w6-console-bff`); W6-T07 (`feat/w6-eval-api`) | — |
+| W6-S1 | sequential | W6-P1 | W6-T02 (`feat/w6-incidents-ui`) | — |
+| W6-P2 | parallel | W6-S1 | W6-T03 (`feat/w6-live-investigation`); W6-T04 (`feat/w6-proposal-ui`); W6-T05 (`feat/w6-lab-eval-ui`); W6-T06 (`feat/w6-audit-ui`) | — |
+| W6-S2 | sequential | W6-P2 | W6-T08 (`feat/w6-console-deploy`); W6-T09 (`feat/w6-e2e-env`); W6-T10 (`feat/w6-e2e-test`) | — |
 
 ---
 
@@ -58,7 +70,7 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 **Requirement IDs:** UI-010 (`/`, `/incidents`, `/incidents/[id]`, `/settings`), UI-050, UI-051, UI-052, §12.3.
 **Depends on:** W6-T01. **Branch:** `feat/w6-incidents-ui`.
 
-**Files:** `apps/console/app/(app)/layout.tsx` (nav, theme toggle, banners from `/v1/me`), `app/(app)/incidents/page.tsx`, `app/(app)/incidents/[id]/page.tsx`, `app/(app)/settings/page.tsx`, `components/{StatusChip,Severity,RelativeTime,DataState,RoleGate,ProblemAlert,Badge}.tsx`, `lib/queries.ts`; tests `tests/ui/incidents.test.tsx`.
+**Files:** `apps/console/app/(app)/layout.tsx` (nav with links to **every** UI-010 page, including pages built later in W6-P2, so later tasks never edit the layout; theme toggle; banner slot rendering `components/Banners.tsx`, which this task creates as an empty component that W6-T06 fills), `app/(app)/incidents/page.tsx`, `app/(app)/incidents/[id]/page.tsx`, `app/(app)/settings/page.tsx`, `components/{StatusChip,Severity,RelativeTime,DataState,RoleGate,ProblemAlert,Badge}.tsx`, `lib/queries.ts`; tests `tests/ui/incidents.test.tsx`.
 
 - [ ] **Step 1: Tests** — with MSW mocking `/bff/api/*` from fixtures generated from `openapi.json` examples: the incidents table renders the UI-010 columns; status filter writes `?status=open&status=investigating` and refetches; auto-refresh interval is 10,000 ms (`refetchInterval`); empty state text "No incidents yet. Incidents appear when a Rootline alert fires or when the Fault Lab runs a demo."; error state shows `title`, `detail`, `request_id` and a Retry button; on the detail page the Investigate button is hidden for viewers (RoleGate), disabled with tooltip "An investigation is already running" when one is active; Close requires a reason (1–300 chars) and sends `Idempotency-Key`; status chips have icon + text (never colour only).
 - [ ] **Step 2: Implement; commit** `feat(console): add shell, incidents and settings pages`.
@@ -85,7 +97,7 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 ### Task W6-T04: Proposal screen with step-up approval
 
 **Requirement IDs:** UI-030, SEC-023a, POL-032, POL-060 (client side).
-**Depends on:** W6-T03. **Branch:** `feat/w6-proposal-ui`.
+**Depends on:** W6-T02 (runs in parallel with W6-T03, stage W6-P2). **Branch:** `feat/w6-proposal-ui`.
 
 - [ ] **Step 1: Tests** — header shows action summary and tier badge (T0 green, T1 amber, T2 red, DENIED grey strike-through, each with icon + text); stepper with timestamps, failure states red; policy panel lists reasons, deny reasons and requirements text exactly `1 approver · passkey step-up · not the initiator · comment ≥ 20 chars` for T2 (`1 approver · passkey step-up` for T1); diff rendered side-by-side via `diff2html`; `resync_app` shows an out-of-sync table instead; Approve visible only to approvers while `awaiting_approval`; T2 dialog requires ≥ 20 chars (button disabled below); on 401 `insufficient_user_authentication` the client navigates to `/auth/step-up?returnTo=/proposals/<id>?resume=approve` and, on return with `resume=approve`, re-opens the dialog with the stored comment (sessionStorage key `rootline:pending-approval:<id>`, cleared after success) and retries with the **same** `Idempotency-Key`; server errors shown inline with `detail` and `request_id`; PR and ArgoCD links (`https://argocd.<D>/applications/argocd/workload`).
 - [ ] **Step 2: Implement; commit** `feat(console): add proposal screen with passkey step-up approvals`.
@@ -128,6 +140,8 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 
 **Requirement IDs:** UI-051, TST-UI-010, ARC-001 (console), CI-020 (console image), SEC-120 (console rows), INF-040 (HTTPRoute local).
 **Depends on:** W6-T02…T06. **Branch:** `feat/w6-console-deploy`.
+
+**Smoke registration (overview §7.7):** this task also creates `tests/smoke/console.yaml` with an `http` check per Service (`console`: namespace `rootline`, Service port `80`, path `/auth/login`, `expect_status: 307`) and an `argocd_app` check `rootline` → `Synced/Healthy`; the coordinator's G12 run (`task smoke:cluster`) must pass.
 
 - [ ] **Step 1: Dockerfile** — multi-stage `node:24-bookworm-slim@<digest>`: `npm ci`, `npm run gen:api` check, `npm run build`; runtime copies `.next/standalone`, `.next/static`, `public`; `USER 10001`; `ENTRYPOINT ["node", "server.js"]`; port 3000.
 - [ ] **Step 2: Chart** — Deployment `console` (1 replica, 192Mi/384Mi, env `KEYCLOAK_ISSUER`, `CONSOLE_BASE_URL`, `API_BASE=http://api.rootline.svc.cluster.local`, `BFF_CLIENT_SECRET` from `bff-client-secret`, `BFF_SESSION_KEY` from `bff-session-key` (generator `password-43`), `DATABASE_URL` from `pg-rootline-console`, `NODE_EXTRA_CA_CERTS=/etc/rootline/ca/ca.crt`), Service port 80 → 3000, `HTTPRoute console` (host `console.<D>`, Gateway `rootline`; Traefik flush interval 100 ms for SSE via a `Middleware`/route annotation per the Traefik version), NetworkPolicy rows from SEC-120.

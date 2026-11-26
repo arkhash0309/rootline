@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 1: Foundations
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A reproducible repository, wiki, toolchain and local k3d platform (ArgoCD, cert-manager, ESO, CNPG Postgres, observability, the trimmed workload) that passes `task doctor`, the WKL-004 baseline gate and CI.
 
@@ -15,6 +15,20 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - Nothing in this week calls a paid API.
 - No Rootline service images exist yet, except where a task says so. The umbrella chart `deploy/charts/rootline` is created empty (W1-T10) and gains components in later weeks.
 - Week 1 acceptance (MS-001): `task up` healthy; `task doctor` OK; WKL-004 baseline gate passed; S2 memory ≤ 9.5 GiB measured; `task wiki:lint` passes; `ci.yml` green.
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 1); `uv run python scripts/swarm_schedule.py table --week 1` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W1-S1 | sequential | — | W1-T01 (`feat/w1-repo-skeleton`) | — |
+| W1-S2 | sequential | W1-S1 | W1-T16 (`feat/w1-swarm-tooling`); W1-T08 (`docs/w1-env-repo`) | — |
+| W1-P1 | parallel | W1-S2 | W1-T02 (`feat/w1-versions`); W1-T03+W1-T04 (`feat/w1-wiki`) | W1-T02 steps 8 → W1-S3 |
+| W1-P2 | parallel | W1-P1 | W1-T05 (`feat/w1-wiki-skill`); W1-T06 (`feat/w1-taskfile`); W1-T07 (`feat/w1-py-common`) | W1-T05 steps 4 → W1-S3; W1-T05 pre-dispatch steps 1 (coordinator) |
+| W1-P3 | parallel | W1-P2 | W1-T09 (`feat/w1-workload-render`); W1-T10 (`feat/w1-gitops-root`); W1-T11 (`feat/w1-observability-postgres`); W1-T14 (`feat/w1-ci`) | W1-T09 steps 6, 7 → W1-S3; W1-T14 steps 2, 3 → W1-S3 |
+| W1-S3 | sequential | W1-P3 | W1-T12 (`feat/w1-task-up`); W1-T13 (`feat/w1-baseline-gate`); W1-T15 (no branch) | — |
 
 ---
 
@@ -127,6 +141,9 @@ def test_agent_instruction_files(repo: Path, name: str) -> None:
     assert "feat/<slug>" in text
     assert "Co-Authored-By:" in text
     assert "Documentation rule" in text
+    assert "Agent models and roles" in text
+    for model in ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"):
+        assert model in text
 
 
 def test_pr_template_headings(repo: Path) -> None:
@@ -188,6 +205,7 @@ addopts = "-ra --strict-markers"
 markers = [
   "integration: needs Docker (testcontainers)",
   "k8s: needs a kind or k3d cluster (task test:k8s)",
+  "integration_contract: cross-task contract test; deselected inside parallel worktrees, run by the integration gate (overview §7.7 G6)",
 ]
 
 [tool.ruff]
@@ -278,7 +296,7 @@ Standard MIT text, first line `MIT License`, then a blank line, then `Copyright 
 
 - [ ] **Step 7: Write `AGENTS.md` and update `CLAUDE.md`**
 
-Both files start with this block (identical text). In `CLAUDE.md` it goes directly under the `# CLAUDE.md — Rootline` heading and introduction, *above* the existing "Documentation rule" section, which stays unchanged. `AGENTS.md` contains this block followed by the line `The documentation rule in CLAUDE.md ("Documentation rule") applies to every document you write.`
+Both files start with this block (identical text). In `CLAUDE.md` it goes directly under the `# CLAUDE.md — Rootline` heading and introduction, *above* the existing "Agent models and roles" and "Documentation rule" sections, which stay unchanged. `AGENTS.md` contains this block, then a verbatim copy of the `CLAUDE.md` section "Agent models and roles (owner instruction, 2026-11-26 — mandatory)", then the line `The documentation rule in CLAUDE.md ("Documentation rule") applies to every document you write.`
 
 ```markdown
 ## Project summary
@@ -327,6 +345,121 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task W1-T16: Swarm and integration tooling
+
+**Requirement IDs:** PG-16 (overview §7), GEN-041, WIK-020, TST-002, TST-010.
+**Depends on:** W1-T01. Runs in stage W1-S2, before every parallel stage (schedule `W1-S2`). **Branch:** `feat/w1-swarm-tooling`.
+
+**Files:**
+- Create: `scripts/proc.py` (moved here from W1-T06), `scripts/swarm_schedule.py`, `scripts/check_ownership.py`, `scripts/integration_gate.py`, `scripts/cluster_smoke.py`, `scripts/swarm_lib.py`
+- Create: `tests/registry/README.md`, `tests/smoke/README.md`, `tests/registry/schema.json`, `tests/smoke/schema.json`
+- Modify: `.gitattributes` (add `wiki/log.md merge=union`), `.gitignore` (add `.swarm/`)
+- Test: `tests/repo/test_swarm_schedule.py`, `tests/repo/test_check_ownership.py`, `tests/repo/test_integration_gate.py`, `tests/repo/test_cluster_smoke.py`
+
+**Interfaces:**
+- `scripts.proc.run(cmd, *, check=True, capture=True, env=None, timeout=600, input_text=None) -> CompletedProcess[str]` (exact code in W1-T06 step 2; W1-T06 now imports it instead of creating it).
+- `scripts.swarm_lib.load_schedule(path=REPO/"docs/superpowers/plans/2026-11-26-rootline-schedule.yaml") -> Schedule`; dataclasses `Schedule(version, max_parallel_implementers, always_allowed: list[str], weeks: list[Week])`, `Week(week, stages: list[Stage])`, `Stage(id, mode, after, tasks: list[TaskEntry])`, `TaskEntry(id, branch, combined_with, owns, excludes, pre_steps, deferred_steps, deferred_to)`; `matches(path: str, globs: list[str]) -> bool` (gitignore-style via `pathspec`, add `pathspec` to `versions.yaml` and the root dev group).
+- CLI `uv run python scripts/swarm_schedule.py validate | next --week N | done <stage> | show <stage> | table --week N`; progress file `.swarm/progress.json` = `{"done": [stage ids], "stage_bases": {stage: sha}}`.
+- CLI `uv run python scripts/check_ownership.py --task <id> --base <sha> [--branch <ref>]` → exit 0, or exit 1 with one line per offending path `ownership: <path> not owned by <task>`.
+- CLI `uv run python scripts/integration_gate.py --stage <id> [--branch <ref>] [--base origin/develop] [--pr-body <file>] [--report-only]` → checks G1–G11 of overview §7.7 (G12 is `cluster_smoke.py`), report `.swarm/gates/<stage>.json`, exit 1 on any `fail` (exit 0 with `--report-only`).
+- CLI `uv run python scripts/cluster_smoke.py [--context k3d-rootline] [--timeout 1200]` → G12.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/repo/test_swarm_schedule.py`:
+
+```python
+"""Verifies PG-16 (overview §7.2 rules)."""
+from pathlib import Path
+
+import pytest
+
+from scripts.swarm_lib import load_schedule, matches, validate_schedule
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_committed_schedule_is_valid() -> None:
+    assert validate_schedule(load_schedule()) == []
+
+
+def test_every_plan_task_scheduled_exactly_once() -> None:
+    import re
+    plans = "".join(p.read_text(encoding="utf-8") for p in (REPO / "docs/superpowers/plans").glob("*-w*.md"))
+    defined = set(re.findall(r"^### Task (W\d-T\d\d):", plans, re.M))
+    sched = load_schedule()
+    scheduled = [t.id for w in sched.weeks for s in w.stages for t in s.tasks]
+    combined = [c for w in sched.weeks for s in w.stages for t in s.tasks for c in t.combined_with]
+    assert sorted(scheduled + combined) == sorted(defined)
+    assert len(scheduled + combined) == len(set(scheduled + combined))
+
+
+def test_rules_detected(tmp_path: Path) -> None:
+    bad = tmp_path / "s.yaml"
+    bad.write_text("""
+version: 1
+max_parallel_implementers: 3
+always_allowed: [wiki/log.md]
+weeks:
+  - week: 9
+    stages:
+      - id: W9-P1
+        mode: parallel
+        after: [W9-X]
+        tasks:
+          - {id: W9-T01, branch: feat/a, owns: [a/**, services/api/migrations/versions/0009_x.py]}
+          - {id: W9-T02, branch: feat/b, owns: [a/b.py, services/api/migrations/versions/0010_y.py], deferred_steps: [2]}
+""", encoding="utf-8")
+    errors = validate_schedule(load_schedule(bad))
+    assert "W9-P1: unknown stage in after: W9-X" in errors
+    assert "W9-P1: W9-T01 and W9-T02 both own a/b.py" in errors
+    assert "W9-P1: two tasks add Alembic revisions" in errors
+    assert "W9-P1: W9-T02 has deferred_steps but no deferred_to" in errors
+
+
+def test_matches_gitignore_style() -> None:
+    assert matches("services/api/x/y.py", ["services/api/**"])
+    assert matches("apps/console/app/(app)/lab/page.tsx", ["apps/console/app/(app)/lab/**"])
+    assert not matches("services/apix/y.py", ["services/api/**"])
+```
+
+`validate_schedule` rules (each produces exactly the error string format shown): stage IDs unique and match `^W\d-[SP]\d$`; `after` references existing earlier stages; parallel stages: every task has `branch` and non-empty `owns`; no path owned by two tasks of the same parallel stage — detected by checking each task's literal (non-glob) owned paths and each glob's fixed prefix against the other tasks' globs; at most one task per parallel stage owns a path under `services/api/migrations/versions/` (message `two tasks add Alembic revisions`); `deferred_steps` non-empty ⇒ `deferred_to` names a sequential stage of the same week that comes later; sequential stages may omit `owns`.
+
+`tests/repo/test_check_ownership.py` (uses a temporary git repo created with `git init` in `tmp_path`, a schedule fixture and two commits): a change inside `owns` passes; a change in `excludes` fails; `wiki/log.md` passes (always-allowed); a non-empty `__init__.py` outside `owns` fails; an empty one passes; a `pyproject.toml` change that touches only `dependencies` passes, one that changes `[project] name` fails (parse both versions with `tomllib` and compare everything except `project.dependencies`, `project.optional-dependencies` and `dependency-groups`); sequential tasks always pass.
+
+`tests/repo/test_integration_gate.py`: with every external command replaced by a fake runner (`integration_gate.run_checks(stage, branch, base, runner=fake)`), assert the checks run in order G1…G11, that a missing tool or input yields `skip` with a reason (for example `G6 console: apps/console/package.json missing`), that one failing check makes the exit code 1, that `--report-only` exits 0, that the JSON report has the overview §7.7 shape, that G8 fails when a registry file present at the base is missing on the branch unless the PR body contains `registry-removal: <id> <reason>`, that G9 fails when the collected test count drops without `test-removal:`, and that G10 is `skip` while `eval/baselines/baseline-smoke.json` does not exist.
+
+`tests/repo/test_cluster_smoke.py`: parses `tests/smoke/*.yaml` fixtures; an `http` check builds the command `kubectl --context <ctx> -n <ns> port-forward svc/<service> <local>:<port>` and requests `http://127.0.0.1:<local><path>`; `exec` and `argocd_app` checks build the expected `kubectl` commands (fake runner); invalid smoke files are rejected against `tests/smoke/schema.json`.
+
+Run: `uv run pytest tests/repo/test_swarm_schedule.py tests/repo/test_check_ownership.py tests/repo/test_integration_gate.py tests/repo/test_cluster_smoke.py -v` → FAIL (modules missing).
+
+- [ ] **Step 2: Implement `scripts/proc.py`** exactly as given in W1-T06 step 2, and `scripts/swarm_lib.py` + `scripts/swarm_schedule.py`. `next --week N` prints the first stage of week N whose `after` stages are all in `progress.done` and which is not itself done; `done <stage>` appends to `progress.done`; `show <stage>` prints the stage's tasks with branch, owns, pre/deferred steps; `table --week N` prints the Markdown "Execution schedule" table used in the wave files (columns `Stage | Mode | After | Tasks (branch) | Deferred steps → stage`), so the wave files can be checked against the YAML.
+
+- [ ] **Step 3: Implement `scripts/check_ownership.py`** — changed files = `git diff --name-only --diff-filter=ACMRD <base>...<branch>`; for a task that is sequential (no `owns`), exit 0; otherwise apply `owns` − `excludes` ∪ `always_allowed` with the pyproject/package.json and `__init__.py` special rules of overview §7.4.
+
+- [ ] **Step 4: Implement `scripts/integration_gate.py`** — each check is a function `(ctx) -> CheckResult(name, status, reason, duration_s, output_tail)` (last 40 lines of output); commands exactly as overview §7.7, run through `scripts.proc.run` with `check=False`; applicability conditions evaluated from files on the branch checkout (the gate checks out `--branch` in a temporary worktree under `.swarm/worktrees/<stage>` with `git worktree add`, runs there, and removes the worktree afterwards, so the coordinator's working tree is never modified). G9 collects counts on the base in a second temporary worktree. PR-body exemptions read from `--pr-body <file>`.
+
+- [ ] **Step 5: Implement `scripts/cluster_smoke.py`** — waits for every ArgoCD Application in `argocd` to be `Synced/Healthy` (poll 15 s, `--timeout` default 1200 s), runs `scripts/doctor.py`'s memory check (≤ 9.5 GiB, imported lazily because `doctor.py` is created by W1-T06; before W1-T06 is merged the memory check is reported `skip`), then every check in `tests/smoke/*.yaml` (`http` checks never follow redirects, so `expect_status` may be a 3xx code); prints one line per check `PASS|FAIL <component>/<name>: <detail>`; exit 1 on any FAIL.
+
+- [ ] **Step 6: Registry and smoke documentation** — `tests/registry/README.md` and `tests/smoke/README.md` state the formats of overview §7.7, the file-naming rule (`<TST-ID>--<task-id>.yaml`, `<component>.yaml`), who creates them (the task that introduces the test or deploys the component), and the exemption lines (`registry-removal:`, `test-removal:`, `baseline-change:`). `schema.json` files are JSON Schema draft 2020-12 for each format.
+
+- [ ] **Step 7: `.gitattributes` and `.gitignore`** — append `wiki/log.md merge=union` to `.gitattributes` and `.swarm/` to `.gitignore`.
+
+- [ ] **Step 8: Run tests** → PASS; `uv run python scripts/swarm_schedule.py validate` → `schedule OK: 8 weeks, 39 stages, 94 tasks`.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add scripts tests/repo tests/registry tests/smoke .gitattributes .gitignore pyproject.toml uv.lock
+git commit -m "build: add swarm schedule, ownership check and integration gate tooling
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
+`versions.yaml` does not exist yet at this point (W1-T02 creates it in stage W1-P1); add `pathspec` and `jsonschema` to the root `dev` dependency group with the constraint `>=0` now, and W1-T02 step 6 aligns the constraint with the resolved version (W1-T02's version table gains rows `pathspec` (latest 0.x) and `jsonschema` (4.x)).
+
+---
+
 ### Task W1-T02: Resolve and enforce pinned versions
 
 **Requirement IDs:** GEN-050, GEN-051.
@@ -368,6 +501,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `gateway-api` | latest standard-channel release 1.x | CRDs (INF-020 wave −4) |
 | `kind` | latest 0.x | CI e2e cluster |
 | `kubeconform`, `tflint`, `trivy`, `gitleaks`, `kyverno-cli`, `cosign`, `syft` | latest stable | CI tooling |
+| `pathspec` | latest 0.x | gitignore-style globs for `scripts/check_ownership.py` (W1-T16) |
+| `jsonschema` | 4.x | registry and smoke file validation (W1-T16) |
+| `prometheus-operator-crds` | `{version, chart, repo}` latest stable chart | CRDs Application (W1-T10) |
+| `postgres-image` | `{version: "16", repo: ghcr.io/cloudnative-pg/postgresql, digest}` | CNPG image (W1-T11) |
+| `kubectl-image` | `{version, repo: bitnami/kubectl, digest}` matching the cluster minor | `copy-ca` Job (W1-T10) |
 | `busybox` | `{version: "1.37", digest: sha256:…}` | LAB-071 injection Job image |
 | `uv-image`, `python-image`, `node-image`, `opa-image` | `{version, repo, digest}` | CI-020 digest-pinned base images |
 
@@ -608,16 +746,18 @@ Store chart entries as `{version: <app version>, chart: <chart version>, repo: <
 
 For every Python dependency, set the constraint in the member that uses it to `>=<resolved>,<<next major>>` (for 0.x packages: `>=<resolved>,<0.<minor+1>>`). Run `uv lock` and verify `uv.lock` resolves each to the version in `versions.yaml`: `uv run python -c "import tomllib;print([p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='fastapi'])"`.
 
-- [ ] **Step 7: Render, test, and write `wiki/versions.md`**
+- [ ] **Step 7: Render and test**
 
 Run: `uv run python scripts/render_versions.py` then `uv run pytest tests/repo/test_versions.py -v` → PASS.
 
-`wiki/versions.md` content: a heading `# Versions`, the line `Pin date: <pin_date>`, a table `| Key | Version | Chart | Source command |` with one row per `versions.yaml` key, and a section `## Upgrade rule` quoting GEN-051.
+- [ ] **Step 8: Write `wiki/versions.md`** (deferred to stage W1-S3, overview §7.3; W1-T03 creates the page as a stub in the same parallel stage)
 
-- [ ] **Step 8: Commit**
+Replace the stub's content with: a heading `# Versions`, the line `Pin date: <pin_date>`, a table `| Key | Version | Chart | Source command |` with one row per `versions.yaml` key, and a section `## Upgrade rule` quoting GEN-051.
+
+- [ ] **Step 9: Commit** (made at the end of step 7, per overview §7.3; step 8 commits separately on `feat/w1-versions-deferred`)
 
 ```bash
-git add versions.yaml scripts/ deploy/root/files/versions.yaml .github/versions.env wiki/versions.md pyproject.toml uv.lock tests/repo/test_versions.py libs services eval
+git add versions.yaml scripts/ deploy/root/files/versions.yaml .github/versions.env pyproject.toml uv.lock tests/repo/test_versions.py libs services eval
 git commit -m "build: pin versions in versions.yaml and render derived files
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -844,7 +984,9 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 | `wiki/adr/0000-template.md` | WIK-011 template: `# NNNN — <title>`, `Status: proposed`, `Date:`, `## Context`, `## Decision`, `## Consequences`, `## Alternatives considered`, `## Spec references` |
 | `wiki/components/<slug>.md` | WIK-010 nine headings in order (Purpose, Requirement IDs, Interfaces, Configuration, Dependencies, Data owned, Failure modes and handling, Runbook links, Last verified) |
 | `wiki/runbooks/workstation-setup.md` | the GEN-040 tool table with `winget` IDs: `Docker.DockerDesktop`, `k3d.k3d`, `Kubernetes.kubectl`, `Helm.Helm`, `Task.Task`, `astral-sh.uv`, `OpenJS.NodeJS.LTS`, `Hashicorp.Terraform`, `Google.CloudSDK`, `GitHub.cli`, `Ollama.Ollama`, `open-policy-agent.opa`, `Git.Git`; the `.wslconfig` content `[wsl2]\nmemory=12GB\nprocessors=6`; a section `## Anthropic` describing O-8 and PG-13; a section `## Verify` saying run `task doctor` |
-| `wiki/runbooks/local-up.md`, `capture-batch.md`, `gcp-bootstrap.md`, `gke-spin-up.md`, `gke-teardown.md`, `github-apps.md`, `interview-demo.md`, `recovery.md` | title + `Status: not implemented yet — planned in <task>` (local-up: W1-T12; capture-batch: W2-T12; gcp-bootstrap: W7-T01; gke-spin-up/teardown: W7-T06; github-apps: W2-T07 and W3-T10; interview-demo: W8-T06; recovery: W2-T12) |
+| `wiki/versions.md` | title `# Versions` + `Status: not implemented yet — planned in W1-T02 step 8.` |
+| `wiki/runbooks/local-up.md` | already created by W1-T08 (stage W1-S2): do not create or edit it; list it in `index.md` |
+| `wiki/runbooks/capture-batch.md`, `gcp-bootstrap.md`, `gke-spin-up.md`, `gke-teardown.md`, `github-apps.md`, `interview-demo.md`, `recovery.md` | title + `Status: not implemented yet — planned in <task>` (capture-batch: W2-T12; gcp-bootstrap: W7-T01; gke-spin-up/teardown: W7-T06; github-apps: W2-T07 and W3-T10; interview-demo: W8-T06; recovery: W2-T12) |
 | `wiki/security/threat-model.md` | the SEC-140 table verbatim; `Status: summary only — full STRIDE in W8-T04` |
 | `wiki/eval/dataset.md`, `local-pilot.md`, `results.md` | title + status line (W2-T13, W4-T14, W4-T15) |
 
@@ -864,13 +1006,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task W1-T04: Architecture decision records 0001–0034
+### Task W1-T04: Architecture decision records 0001–0035
 
-**Requirement IDs:** WIK-011, spec §3, overview §5 (PG-1 … PG-15), S9.
+**Requirement IDs:** WIK-011, spec §3, overview §5 (PG-1 … PG-16), S9.
 **Depends on:** W1-T03 (same branch `feat/w1-wiki`).
 
 **Files:**
-- Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0034-batch-ids-and-caching.md` (34 files)
+- Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0035-swarm-execution.md` (35 files)
 - Modify: `wiki/index.md` (list them), `docs/superpowers/specs/2026-11-25-rootline-design.md` §26 (rows already added at planning time; fill the `ADR` column links)
 
 - [ ] **Step 1: Write each ADR from this table**
@@ -913,6 +1055,7 @@ Every file uses the WIK-011 template. `Status: accepted`, `Date: <today>`. **Con
 | 0032 | `secret-bootstrap` | Sealed Secrets; ESO for repo creds | Repo creds and DB passwords handled per PG-9/PG-10; host key name per PG-13 | PG-9, PG-10, PG-13 |
 | 0033 | `workload-render-refinements` | Keep init-copy and restart flagd always | Live flag drift possible; collector FQDN | PG-11, PG-12 |
 | 0034 | `batch-ids-and-caching` | Truncate IDs; system-block-only caching | Hashed batch `custom_id` with a mapping file; extra top-level cache breakpoint | PG-14, PG-15 |
+| 0035 | `swarm-execution` | One agent implementing tasks in sequence; per-task PRs straight into develop | Parallel stages in worktrees, integration branches, integration gate; fixed role models (Haiku 5.5 coordinator, Opus 5.5 planner and reviewer, Sonnet 5.5 implementer, high effort except the coordinator) | PG-16, overview §7, CLAUDE.md |
 
 - [ ] **Step 2: Update `wiki/index.md`, then run the lint**
 
@@ -923,7 +1066,7 @@ Run: `uv run pytest tests/repo -v` → PASS.
 
 ```bash
 git add wiki docs/superpowers/specs/2026-11-25-rootline-design.md
-git commit -m "docs(wiki): add ADRs 0001-0034
+git commit -m "docs(wiki): add ADRs 0001-0035
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 git push -u origin feat/w1-wiki
@@ -943,7 +1086,7 @@ Fill the PR body sections before creating (Requirement IDs: WIK-001–021, §3; 
 - Create: `.claude/skills/rootline-wiki/SKILL.md`
 - Test: `tests/repo/test_skill.py`
 
-- [ ] **Step 1: Load the superpowers `writing-skills` skill** and follow its process (it requires a baseline test of agent behaviour without the skill; use the scenario "implement a one-line change in `libs/py-common` and finish the task" and record whether the agent updated `wiki/log.md` and ran `task wiki:lint`).
+- [ ] **Step 1 (pre-dispatch, coordinator — overview §7.3): Load the superpowers `writing-skills` skill** and follow its process; the coordinator dispatches a fresh `rootline-implementer` (Sonnet 5.5, high) as the test subject and passes the recorded baseline to the W1-T05 implementer (it requires a baseline test of agent behaviour without the skill; use the scenario "implement a one-line change in `libs/py-common` and finish the task" and record whether the agent updated `wiki/log.md` and ran `task wiki:lint`).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1063,7 +1206,7 @@ Then run `task wiki:lint` and fix every reported problem.
     - [agent|owner] <what happened> (PR #n / commit sha7)
 ```
 
-- [ ] **Step 4: Verify with the writing-skills process** (re-run the baseline scenario with the skill loaded; the agent must update `wiki/log.md` and run `task wiki:lint`). Record the result in `wiki/log.md`.
+- [ ] **Step 4 (deferred to W1-S3, coordinator): Verify with the writing-skills process** (re-run the baseline scenario with the skill loaded; the agent must update `wiki/log.md` and run `task wiki:lint`). Record the result in `wiki/log.md`.
 
 - [ ] **Step 5: Run tests and commit**
 
@@ -1084,11 +1227,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Depends on:** W1-T02. **Branch:** `feat/w1-taskfile`.
 
 **Files:**
-- Create: `Taskfile.yml`, `scripts/doctor.py`, `scripts/proc.py`, `.env.example`
+- Create: `Taskfile.yml`, `scripts/doctor.py`, `.env.example` (`scripts/proc.py` already exists, created by W1-T16)
 - Test: `tests/repo/test_doctor.py`
 
 **Interfaces:**
-- Produces: `scripts.proc.run(cmd: list[str], *, check: bool = True, capture: bool = True, env: dict | None = None, timeout: int = 600) -> subprocess.CompletedProcess[str]` (all later scripts use it); `scripts.doctor.Check(name: str, status: Literal["OK","WARN","FAIL"], detail: str)`; `scripts.doctor.memory_requests_gib(pods_json: dict) -> float`; `scripts.doctor.env_key_checks(example: str, local: dict[str,str], week: int) -> list[Check]`.
+- Consumes: `scripts.proc.run(cmd: list[str], *, check: bool = True, capture: bool = True, env: dict | None = None, timeout: int = 600, input_text: str | None = None) -> subprocess.CompletedProcess[str]` (created by W1-T16 with the code in step 2).
+- Produces: `scripts.doctor.Check(name: str, status: Literal["OK","WARN","FAIL"], detail: str)`; `scripts.doctor.memory_requests_gib(pods_json: dict) -> float`; `scripts.doctor.env_key_checks(example: str, local: dict[str,str], week: int) -> list[Check]`.
 
 **`.env.example` format.** One key per line, `KEY=` with an empty value, each preceded by a comment `# week: N — <purpose>` giving the week from which the key is required:
 
@@ -1179,7 +1323,7 @@ def test_check_line_format() -> None:
 
 Run: `uv run pytest tests/repo/test_doctor.py -v` → FAIL.
 
-- [ ] **Step 2: Implement `scripts/proc.py`**
+- [ ] **Step 2: Reference code of `scripts/proc.py`** (W1-T16 creates the file with exactly this code; confirm it matches and do not recreate it)
 
 ```python
 """Subprocess helper used by every Taskfile script (GEN-041)."""
@@ -1408,6 +1552,22 @@ tasks:
   versions:render:
     desc: Regenerate files derived from versions.yaml
     cmds: ["{{.PY}} scripts/render_versions.py"]
+
+  swarm:validate:
+    desc: Validate the execution schedule (overview §7.2)
+    cmds: ["{{.PY}} scripts/swarm_schedule.py validate"]
+
+  swarm:next:
+    desc: Print the next runnable stage of a week (task swarm:next -- --week N)
+    cmds: ["{{.PY}} scripts/swarm_schedule.py next {{.CLI_ARGS}}"]
+
+  integrate:gate:
+    desc: Run integration gate checks G1-G11 (task integrate:gate -- --stage W2-P1 [--branch ref] [--pr-body file])
+    cmds: ["{{.PY}} scripts/integration_gate.py {{.CLI_ARGS}}"]
+
+  smoke:cluster:
+    desc: Run cluster smoke check G12 against k3d-rootline
+    cmds: ["{{.PY}} scripts/cluster_smoke.py {{.CLI_ARGS}}"]
 ```
 
 `scripts/run_if_exists.py` (create now): `run_if_exists.py <path> -- <cmd...>` runs the command only if `<path>` exists, otherwise prints `skip: <path> missing` and exits 0. `scripts/lint.py` (create now) runs, in order and only when the relevant files exist: `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy services libs eval/runner`, `npm --prefix apps/console run lint`, `npm --prefix apps/console run typecheck`, `helm lint` for every chart under `deploy/`, `scripts/render_manifests.py | kubeconform -strict -summary -ignore-missing-schemas` (created in W1-T10), `terraform fmt -check -recursive infra/terraform`, `tflint --recursive --chdir infra/terraform`; it exits non-zero if any step fails and prints one summary line per step. `scripts/up.py`, `scripts/build_images.py`, `scripts/secrets_local.py`, `scripts/trust_ca.py` are created in W1-T12 and W1-T10; until then the corresponding tasks fail with "No such file", which is expected.
@@ -1995,7 +2155,7 @@ git -C ../rootline-env push origin main
 ### Task W1-T09: Workload render script
 
 **Requirement IDs:** WKL-001, WKL-002, WKL-003, WKL-010, WKL-011, TST-WKL-001, GEN-011, PG-11, PG-12, LAB-011.
-**Depends on:** W1-T02, W1-T08. **Branch:** `feat/w1-workload-render`.
+**Depends on:** W1-T02, W1-T08, W1-T16 (`scripts.proc`). **Branch:** `feat/w1-workload-render`.
 
 **Files:**
 - Create: `deploy/upstream/otel-demo/values.yaml`, `scripts/render_workload.py`, `scripts/workload_transforms.py`
@@ -2362,7 +2522,7 @@ apps:                           # every Application; later tasks flip enabled: t
   demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, envs: [gke]}
 ```
 
-(`prometheus-crds` uses chart `prometheus-community/prometheus-operator-crds`; add key `prometheus-operator-crds` to `versions.yaml` in this task. `observability` is a local wrapper chart with upstream dependencies, created in W1-T11.)
+(`prometheus-crds` uses chart `prometheus-community/prometheus-operator-crds`; the key `prometheus-operator-crds` is resolved by W1-T02. `observability` is a local wrapper chart with upstream dependencies, created in W1-T11.)
 
 - Every local chart receives Helm parameters `global.env`, `global.domain`, `global.gcpProject`, `global.k8sIssuer`, `global.artifactsBucket`, `global.ingressIP` and its `values-<env>.yaml` file (`valueFiles: [values.yaml, values-<env>.yaml]`, `ignoreMissingValueFiles: true`).
 
@@ -2862,7 +3022,9 @@ Expected: a `0.8.x` version. If it fails, build `deploy/images/postgres/Dockerfi
 
 - [ ] **Step 7: Run `task trust-ca`** and open `https://argocd.127.0.0.1.sslip.io` in the browser; log in as `admin`. Record the result in `wiki/runbooks/local-up.md`, which now documents: prerequisites, `.env.local` keys for week 1, `task up`, expected duration, URLs, admin password retrieval, `task stop/start/down`, and troubleshooting (apps stuck `Progressing` → `kubectl -n argocd get applications`, `argocd app get` via UI).
 
-- [ ] **Step 8: Commit** `feat: add task up bring-up for the local k3d cluster` with the wiki updates.
+- [ ] **Step 8: Smoke registration (overview §7.7)** — create `tests/smoke/platform.yaml` with one `argocd_app` check (`expect: Synced/Healthy`) per Application enabled for `local` in `deploy/root/values.yaml`, then run `task smoke:cluster` → all PASS.
+
+- [ ] **Step 9: Commit** `feat: add task up bring-up for the local k3d cluster` with the wiki updates and `tests/smoke/platform.yaml`.
 
 ---
 

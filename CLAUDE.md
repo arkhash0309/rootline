@@ -5,6 +5,27 @@ Instructions for every AI coding agent working in this repository. These rules o
 Project: **Rootline**, an AI SRE agent that diagnoses incidents in its own Kubernetes cluster.
 Source of truth: [docs/superpowers/specs/2026-11-25-rootline-design.md](docs/superpowers/specs/2026-11-25-rootline-design.md) (SPEC-ROOTLINE-001).
 
+## Agent models and roles (owner instruction, 2026-11-26 — mandatory)
+
+- Planning: Opus 5.5 with high effort
+- Implementation: Sonnet 5.5 with high effort
+- Review: Opus 5.5 with high effort
+- Haiku 5.5 will coordinate the swarm of subagents
+
+These assignments are strict. No other model or effort level may be used for these roles.
+
+| Role | Model ID | Effort | Runs as | Responsibilities |
+|---|---|---|---|---|
+| Coordinator | `claude-haiku-5-5` | `medium` (Haiku 5.5's default effort; the owner set no effort for this role) | The top-level Claude Code session, started with `claude --model claude-haiku-5-5`. It is the only role that spawns subagents, because subagents cannot spawn subagents | Reads the execution schedule, dispatches planner, implementer and reviewer subagents, runs the integration gate, performs mechanical git operations (branches, merges, PRs), updates `wiki/status.md`, asks the owner for **[OWNER]** / **[CONFIRM]** / **[PAID]** steps. It does not write or review application code itself |
+| Planner | `claude-opus-5-5` | `high` | Subagent `rootline-planner` (`.claude/agents/rootline-planner.md`) | Writes and amends specs, plans, the execution schedule and ADRs; decides spec gaps (spec §0.3); re-plans after a task fails 3 fix rounds; designs non-trivial merge-conflict resolutions |
+| Implementer | `claude-sonnet-5-5` | `high` | Subagent `rootline-implementer` (`.claude/agents/rootline-implementer.md`); in its own git worktree when its task is in a parallel stage | Executes exactly one plan task test-first; fixes review findings, gate failures and conflicts on its own task branch |
+| Reviewer | `claude-opus-5-5` | `high` | Subagent `rootline-reviewer` (`.claude/agents/rootline-reviewer.md`); read-only, may run tests | Reviews every task (spec compliance, then code quality) and every integration before it reaches `develop` |
+
+- When dispatching with the Agent tool, the coordinator MUST pass the matching `model` and `effort` explicitly, even when the agent definition already sets them.
+- If any of these models is unavailable, the coordinator stops and asks the owner. It never substitutes another model.
+- These are the models that **build** Rootline. The models **inside** the Rootline product (`claude-haiku-5-5` and `claude-sonnet-5-5` per spec AGT-050) are a separate, unrelated choice.
+- The full execution protocol (parallel stages, worktrees, integration gate, merge order) is in [docs/superpowers/plans/2026-11-26-rootline-00-overview.md](docs/superpowers/plans/2026-11-26-rootline-00-overview.md) §7, and the machine-readable schedule is [docs/superpowers/plans/2026-11-26-rootline-schedule.yaml](docs/superpowers/plans/2026-11-26-rootline-schedule.yaml).
+
 ## Documentation rule: every document must be detailed and unambiguous
 
 All implementation in this project is done by AI coding agents. Any gap or vague statement in a document will be filled with a guess, so every document must leave **nothing open to interpretation**. Length does not matter: a document can run to thousands of lines.

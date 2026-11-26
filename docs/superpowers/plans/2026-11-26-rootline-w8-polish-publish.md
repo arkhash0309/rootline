@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 8: Polish and Publish
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Final benchmark numbers (sweep 2), an honest final report with failure analysis, the full threat model, the public dataset prepared for Hugging Face, the technical write-up, README and demo video, and verified success criteria S1–S9.
 
@@ -16,6 +16,18 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - **Write-up and README claims (DEL-003):** every claim carries a number or a link to evidence; "better/worse" only with Holm p < 0.05 (EVL-040).
 - Publication to Hugging Face and the video are owner actions (O-14, O-15).
 - Week 8 acceptance (MS-001): S3–S9 verified; README per §24.1; video recorded; write-up committed.
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 8); `uv run python scripts/swarm_schedule.py table --week 8` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W8-P1 | parallel | — | W8-T04 (`docs/w8-threat-model`); W8-T05 (`feat/w8-publish-hf`) | W8-T05 steps 3 → W8-S2 |
+| W8-S1 | sequential | W8-P1 | W8-T01 (`feat/w8-dev-fixes`); W8-T02 (no branch) | — |
+| W8-P2 | parallel | W8-S1 | W8-T03 (`docs/w8-cost-ledger`); W8-T06 (`docs/w8-writeup`) | W8-T06 steps 5 → W8-S2 |
+| W8-S2 | sequential | W8-P2 | W8-T07 (no branch) | — |
 
 ---
 

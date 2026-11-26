@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — 00 Overview and Shared Contracts
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execution follows the swarm protocol in §7 of this file: a Haiku 5.5 coordinator dispatches Sonnet 5.5 implementers (high effort), Opus 5.5 reviewers (high effort) and an Opus 5.5 planner (high effort) per `CLAUDE.md` → "Agent models and roles", using the stage order in `2026-11-26-rootline-schedule.yaml`. Within each task, use superpowers:subagent-driven-development's per-task discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build Rootline exactly as specified in `docs/superpowers/specs/2026-11-25-rootline-design.md` (SPEC-ROOTLINE-001 v2.0, approved by the owner on 2026-11-26), in eight weekly waves.
 
@@ -40,11 +40,11 @@ Every task in every wave file implicitly includes these. Values are copied from 
 
 ## 1. How to execute these plans
 
-1. Read this overview completely, then the wave file for the current week.
+1. Read this overview completely (including §7), then the wave file for the current week.
 2. Load the `rootline-wiki` skill (exists after W1-T05) and follow it before and after every task.
-3. Execute tasks in the order listed inside a wave unless the task's **Depends on** line says otherwise. Tasks marked **Parallel-safe** may be run by separate subagents simultaneously.
-4. One task = one branch `feat/<wave>-<task-slug>` (for example `feat/w2-scenario-generator`) = one PR into `develop`. Tasks marked **[OWNER]** have no PR unless they change files.
-5. A task is done only when: its tests pass locally (`task test` subset named in the task), `task lint` passes, the wiki obligations are met, the PR is squash-merged, and `wiki/status.md` lists it under Done.
+3. Execute each week's stages in the order given by its **Execution schedule** section (identical to `2026-11-26-rootline-schedule.yaml`). A `sequential` stage runs its tasks one after another; a `parallel` stage runs its tasks simultaneously in separate git worktrees and then integrates them through the §7 integration gate. A task's **Depends on** line is always satisfied by the stage order.
+4. One task = one branch `feat/<wave>-<task-slug>` (for example `feat/w2-scenario-generator`) = one PR. Sequential tasks open their PR into `develop`. Parallel tasks open their PR into the stage's integration branch `integration/<stage id lowercase>` (for example `integration/w2-p1`), which reaches `develop` as one squash-merged PR (§7.6). Tasks marked **[OWNER]** have no PR unless they change files.
+5. A task is done only when: its tests pass, its reviewer verdict is `APPROVE`, the wiki obligations are met, its work is squash-merged into `develop` (directly, or through its integration PR), its deferred steps (§7.3) are complete, and `wiki/status.md` lists it under Done.
 6. At the end of each wave, run the wave's **Acceptance** section and open the release PR (MS-002).
 
 ### 1.1 Plan files
@@ -52,7 +52,8 @@ Every task in every wave file implicitly includes these. Values are copied from 
 | File | Week | Name | Tasks | Depends on |
 |---|---|---|---|---|
 | `2026-11-26-rootline-00-overview.md` | — | This file: constraints, contracts, traceability | — | — |
-| `2026-11-26-rootline-w1-foundations.md` | 1 | Foundations | W1-T01 … W1-T15 | — |
+| `2026-11-26-rootline-schedule.yaml` | all | Machine-readable execution schedule: stages, owned paths, deferred steps (§7) | — | — |
+| `2026-11-26-rootline-w1-foundations.md` | 1 | Foundations | W1-T01 … W1-T16 | — |
 | `2026-11-26-rootline-w2-fault-lab.md` | 2 | Fault Lab | W2-T01 … W2-T13 | W1 |
 | `2026-11-26-rootline-w3-identity-mcp.md` | 3 | Identity and MCP | W3-T01 … W3-T14 | W2 |
 | `2026-11-26-rootline-w4-agent-mvp.md` | 4 | Minimal end-to-end version | W4-T01 … W4-T15 | W3 |
@@ -232,6 +233,7 @@ Found while sequencing the work. Each is recorded as a spec §26 row (done in th
 | PG-13 | SEC-100 | The host-side eval runner and the in-cluster agent need different Anthropic keys (budget keys `dev`/`eval` vs `cluster`), but SEC-100 names only `ANTHROPIC_API_KEY`. | `.env.local` key `ANTHROPIC_API_KEY` is the in-cluster key (`rootline-cluster`). The host uses `ROOTLINE_HOST_ANTHROPIC_API_KEY` (`rootline-dev`). CI uses repository secret `ANTHROPIC_API_KEY_CI`. | 0032 |
 | PG-14 | EVL-062 | Message Batches `custom_id` must match `^[a-zA-Z0-9_-]{1,64}$`; `"<run_id>:<scenario_id>:<llm_call_seq>"` contains colons and can exceed 64 characters. | `custom_id = "c" + sha256("<run_id>:<scenario_id>:<llm_call_seq>").hexdigest()[:48]`. The backend keeps the mapping in memory and appends it to `eval/runs/<run_id>/batch_map.jsonl` (`{custom_id, run_id, scenario_id, seq}`) before submitting, so a resumed sweep can match results. | 0034 |
 | PG-15 | AGT-063 | Append-only large-model conversations benefit from caching the growing message prefix, but AGT-063 places a breakpoint only on the last system block. | Requests carry the system-block breakpoint (AGT-063) **and** the top-level automatic `cache_control: {"type": "ephemeral"}`, which caches the last cacheable block of the message list. The week-4 cache check (AGT-063) measures the effect. | 0034 |
+| PG-16 | GEN-020, GEN-021, MS-001 | Parallel implementation in worktrees needs a place where several task branches are combined and verified before they reach `develop`; GEN-020 knows no such branch, and the spec does not say which models plan, build and review. | Owner instruction (2026-11-26): parallel stages per `2026-11-26-rootline-schedule.yaml`; task PRs merge into `integration/<stage>` branches, which pass the §7.7 integration gate and an integration review and then reach `develop` as one squash-merged PR. Models: coordinator Haiku 5.5, planner and reviewer Opus 5.5 high, implementer Sonnet 5.5 high (`CLAUDE.md`). | 0035 |
 
 ---
 
@@ -242,6 +244,7 @@ Every requirement ID in the spec maps to at least one task. "Verify" tasks check
 | Requirement IDs | Tasks |
 |---|---|
 | GEN-001, GEN-002, GEN-003 | W1-T01 |
+| PG-16 (swarm protocol, §7) | W1-T16 (tooling), every wave's Execution schedule |
 | GEN-010, GEN-011, GEN-012, GEN-024 | W1-T08, W1-T10 |
 | GEN-020, GEN-021, GEN-022, GEN-023 | W1-T01 (template), W1-T14 (ruleset O-3) |
 | GEN-030 | (no task: no staging environment is created) |
@@ -374,3 +377,147 @@ Every requirement ID in the spec maps to at least one task. "Verify" tasks check
 | TST-UI-001 | W6-T03 |
 | TST-UI-010 | W6-T08 |
 | TST-E2E-001 | W6-T10 |
+
+---
+
+## 7. Swarm execution and integration protocol
+
+Decision record: PG-16 (§5) and ADR 0035. Roles and models are fixed by `CLAUDE.md` → "Agent models and roles".
+
+### 7.1 Roles
+
+| Role | Model | Effort | Agent | Does |
+|---|---|---|---|---|
+| Coordinator | `claude-haiku-5-5` | `medium` | top-level session (`claude --model claude-haiku-5-5`) | runs this protocol; dispatches subagents; runs gates and git operations; talks to the owner |
+| Planner | `claude-opus-5-5` | `high` | `rootline-planner` | plan, schedule and spec changes; spec-gap decisions; re-planning; conflict-resolution design |
+| Implementer | `claude-sonnet-5-5` | `high` | `rootline-implementer` | one task per dispatch, test-first |
+| Reviewer | `claude-opus-5-5` | `high` | `rootline-reviewer` | task reviews and integration reviews |
+
+Every Agent-tool dispatch passes `subagent_type`, `model` (`opus`, `sonnet`) and `effort: "high"` explicitly. Implementers of parallel tasks are dispatched with `isolation: "worktree"`.
+
+### 7.2 Schedule and stages
+
+`docs/superpowers/plans/2026-11-26-rootline-schedule.yaml` is the single source of truth for stage order. Schema:
+
+```yaml
+version: 1
+max_parallel_implementers: 3
+weeks:
+  - week: 2
+    stages:
+      - id: W2-P1                 # S = sequential, P = parallel; unique; order = execution order
+        mode: parallel            # sequential | parallel
+        after: [W2-S1]            # stages that must be complete first
+        uses_cluster: false       # parallel stages are always false
+        tasks:
+          - id: W2-T03
+            branch: feat/w2-algorithms
+            combined_with: []     # other task IDs implemented on the same branch (W1-T03 + W1-T04)
+            owns: [services/mcp-telemetry/**, libs/py-mcpkit/rootline_mcpkit/windows.py]
+            excludes: []          # globs carved out of owns
+            pre_steps: []         # step numbers the coordinator completes before dispatch
+            deferred_steps: []    # step numbers run in the stage named by deferred_to
+            deferred_to: null     # stage ID, required when deferred_steps is non-empty
+```
+
+Rules:
+1. At most `max_parallel_implementers` = **3** implementer subagents run at once (16 GB workstation: each worktree runs its own `uv sync`, pytest and testcontainers). Tasks of a larger parallel stage wait in schedule order for a free slot.
+2. Parallel stages never use the local cluster. Before dispatching a parallel stage whose tasks run integration tests, the coordinator runs `task stop` if the cluster is running, and `task start` again afterwards.
+3. Two tasks that each add an Alembic revision are never in the same parallel stage (one linear chain, §4).
+4. No two tasks in one parallel stage own the same path, except the always-allowed paths in §7.4. `scripts/swarm_schedule.py validate` enforces this.
+5. Shared contracts (§3) are changed only by sequential tasks or by the planner. A parallel implementer that needs a contract change reports `BLOCKED`.
+
+### 7.3 Steps that never run inside a parallel worktree
+
+| Step kind | How it is recognised | Who runs it, where |
+|---|---|---|
+| Owner and confirmation steps | marked **[OWNER]** or **[CONFIRM]** | coordinator with the owner; before dispatch when listed in `pre_steps`, otherwise in `deferred_to` |
+| Paid steps | marked **[PAID]** | coordinator, after the owner's go-ahead, in `deferred_to` |
+| Cluster steps | uses the local k3d cluster, kind, GKE, `task up`, `task images`, `task stop/start`, `kubectl`, `k3d`, `kind`, `helm install`, `task lab:*`, `task e2e*`, `task gke:*`, `task test:k8s` | an implementer dispatched by the coordinator on the integration result (on `develop` after the integration PR merges), in `deferred_to` |
+| Steps needing other tasks of the same stage | named in `deferred_steps` | same as cluster steps |
+| Steps that need subagents (for example the writing-skills baseline in W1-T05) | named in `pre_steps` / `deferred_steps` | coordinator, which dispatches a fresh implementer as the test subject |
+
+A task is not done until its deferred steps are done (§1 step 5). Each `deferred_to` stage is a sequential stage of the same week, and its deferred steps run at the start of that stage, before its own tasks, in schedule order.
+
+Commits around deferred steps: the implementer commits all non-deferred work at the end of its last non-deferred step, using the task's commit message, even when the plan's commit step comes after a deferred step. Deferred steps that change files (measurements, wiki records, generated outputs) commit on a branch `feat/<task branch slug>-deferred`, opened as a PR into `develop` and reviewed like a sequential task.
+
+### 7.4 Ownership and always-allowed paths
+
+A parallel task may change only its `owns` globs (minus `excludes`) plus these always-allowed paths:
+
+| Path | Handling at integration |
+|---|---|
+| `wiki/log.md` | append-only; `.gitattributes` sets `merge=union`, so appends from parallel tasks never conflict |
+| `**/pyproject.toml` dependency arrays, `apps/console/package.json` dependency maps | on conflict keep the union of both sides' entries (one entry per package; when both sides constrain the same package differently keep the narrower constraint that still admits the `versions.yaml` version), then regenerate the lockfile. Any other edit to these files must be in the task's `owns` |
+| Empty `__init__.py` package markers (size 0, or a single docstring line) | identical additions merge cleanly; `check_ownership.py` rejects non-empty ones outside `owns` |
+| `uv.lock`, `apps/console/package-lock.json` | never hand-merged: on conflict take `origin/develop`'s version, then run `uv lock` / `npm --prefix apps/console install --package-lock-only` and commit `chore: regenerate lockfile` |
+| Generated files: `deploy/root/files/versions.yaml`, `.github/versions.env`, `infra/terraform/*/versions.auto.tf`, `services/api/openapi.json`, `apps/console/lib/api-types.ts`, `prompts/HASHES.json` | never hand-merged: on conflict take either side, then regenerate with `uv run python scripts/render_versions.py`, `task api:openapi`, `npm --prefix apps/console run gen:api`, `uv run python -m rootline_agent.prompts --write-hashes`; commit `chore: regenerate generated files` |
+| `tests/registry/<TST-ID>--<task-id>.yaml` (one file per named test per task) | new files only; a task never edits another task's registry file |
+| `tests/smoke/<component>.yaml` (one file per component) | new files only, owned by the deploying task |
+
+`wiki/status.md` is written only by the coordinator. `scripts/check_ownership.py --task <id> --base <sha>` fails when a branch changes anything else.
+
+### 7.5 Dispatch and per-task review loop
+
+For each task in a stage:
+1. Coordinator completes the task's `pre_steps`.
+2. Coordinator dispatches `rootline-implementer` (`model: "sonnet"`, `effort: "high"`, `isolation: "worktree"` when parallel) with `task_id`, `plan_file`, `branch`, `base` (parallel: the stage base = `origin/develop` tip when the stage starts, recorded in `.swarm/stages/<stage>.json`; sequential: the current `origin/develop` tip), `stage`, `mode: implement`.
+3. On `STATUS: DONE`, coordinator dispatches `rootline-reviewer` (`model: "opus"`, `effort: "high"`) with `kind: task`.
+4. `CHANGES_REQUIRED` → implementer again with `mode: fix-review` and the findings; then review again. After **3** failed rounds the coordinator dispatches `rootline-planner` to re-plan the task; a re-plan that changes scope, cost or security goes to the owner.
+5. `STATUS: BLOCKED` → planner decides (contract change, ownership change, task split); the coordinator updates the schedule only through the planner.
+
+### 7.6 Integration of a parallel stage
+
+When every task of the stage has `APPROVE`:
+
+1. `git fetch origin && git switch -c integration/<stage id lowercase> <stage base>` and push it.
+2. For each task **in schedule order**, the task PR targets this branch; the coordinator merges it with a merge commit (`gh pr merge <n> --merge`). On a conflict:
+   - only always-allowed paths (§7.4) → apply the §7.4 handling, commit, continue;
+   - any other path → dispatch the implementer of the **later** task with `mode: resolve-conflict` to rebase its branch onto the integration branch tip and force-push its task branch (task branches are unprotected); then the reviewer re-reviews only the resolution diff; then retry the merge. If the reviewer finds the conflict is a design clash, the planner designs the resolution.
+3. Run the integration gate (§7.7) on the integration branch.
+4. Dispatch `rootline-reviewer` with `kind: integration`.
+5. Open the integration PR `integration/<stage> → develop`, titled `feat(w<N>): integrate <stage> (<task IDs>)`, whose body lists every task PR, the gate report summary and the reviewer verdict, plus the WIK-020 wiki pages changed. The coordinator updates `wiki/status.md` in this PR. CI (`ci / required`) must pass; then squash-merge (GEN-021).
+6. Run the stage's deferred steps in their `deferred_to` stage on the new `develop`.
+7. Delete the integration branch and the task branches.
+
+Sequential tasks skip steps 1–2 and 5: they open their PR straight into `develop`, run the gate on their own branch (`--branch feat/...`), get a task review, and are squash-merged.
+
+### 7.7 Integration gate (`scripts/integration_gate.py`, created by W1-T16)
+
+`uv run python scripts/integration_gate.py --stage <id> [--branch <name>] [--base origin/develop] [--report-only]` runs these checks in order and writes `.swarm/gates/<stage>.json` (`{stage, branch, base_sha, head_sha, started_at, checks: [{name, status: pass|fail|skip, reason, duration_s, output_tail}]}`; `.swarm/` is gitignored). A check whose tooling or inputs do not exist yet is `skip` with the reason; every other check must `pass`. Any `fail` → the gate exits 1.
+
+| # | Check | Passes when | Applies when |
+|---|---|---|---|
+| G1 | Ownership | `check_ownership.py` passes for every task of the stage | parallel stages |
+| G2 | Lockfiles | `uv lock --locked` succeeds; `npm --prefix apps/console ci --dry-run` succeeds | always / console exists |
+| G3 | Generated files | `render_versions.py --check`, `scripts/check_contracts.py` (OpenAPI and TS client drift), prompt hash test, scenario-file test all pass | each when its source exists |
+| G4 | Migrations | `alembic heads` shows exactly one head; TST-DB-001 passes | `services/api/migrations` exists |
+| G5 | Static | `task lint` equivalent (ruff, ruff format --check, mypy --strict, eslint, tsc, helm lint, kubeconform via `render_manifests.py`, terraform fmt/validate, tflint, `opa fmt --diff`) | per tool |
+| G6 | Unit and integration tests | `uv run pytest -m "not k8s"` (includes `integration`), `npm --prefix apps/console run test -- --run`, `opa test policies/opa`, `kyverno test policies/kyverno` | per tool |
+| G7 | Coverage | TST-002 thresholds | Python packages with tests |
+| G8 | Named-test registry | every `tests/registry/*.yaml` entry's selectors collect ≥ 1 test each and pass; no registry file deleted relative to the base unless the integration PR body has a line `registry-removal: <TST-ID> <reason>` approved by the reviewer | `tests/registry/` exists |
+| G9 | No test loss | `pytest --collect-only -q` count on the branch ≥ count on the base, unless the PR body has `test-removal: <reason>` | always |
+| G10 | Replay regression | `rootline-eval baseline --split smoke` predictions equal `eval/baselines/baseline-smoke.json` exactly (deterministic, USD 0) unless the PR body has `baseline-change: <reason>` and the file is updated in the same PR | from W4-T14 (smoke set and baseline file exist) |
+| G11 | Wiki | `scripts/wiki_lint.py` and `--changed-files` rule pass | always |
+| G12 | Cluster smoke | run in the `deferred_to` stage after merge (not in the parallel stage): `task images`, `task up REVISION=develop`, then `scripts/cluster_smoke.py`: every ArgoCD app `Synced/Healthy` within 20 min, `memory_requests_total ≤ 9.5 GiB`, and every check in `tests/smoke/*.yaml` passes | from W1-T12, when the stage changed `deploy/**`, `services/**`, `apps/console/**`, `infra/k3d/**` or `policies/**` |
+
+`tests/registry/<TST-ID>--<task-id>.yaml` format (several tasks may each register selectors for the same TST ID, for example TST-MCP-001 from W3-T06, W3-T07 and W3-T08): `{id: TST-LAB-001, introduced_by: W2-T06, selectors: [{kind: pytest, target: "services/faultlab/tests/test_generate.py::test_tst_lab_001_counts"}]}`; `kind` ∈ `pytest`, `vitest`, `opa`, `kyverno`, `playwright` (Playwright entries are listed but executed only by `e2e.yml` and W6-T10). Every task that creates a named test (§6.1) also creates its registry file.
+
+`tests/smoke/<component>.yaml` format: `{component: api, checks: [{name: readyz, kind: http, namespace: rootline, service: api, port: 80, path: /readyz, expect_status: 200}]}`; `kind` ∈ `http` (via `kubectl port-forward`), `exec` (`{pod_selector, container, command, expect_exit: 0}`), `argocd_app` (`{app, expect: Synced/Healthy}`). Every task that deploys a component creates its smoke file.
+
+### 7.8 Failure handling
+
+| Failure | Action |
+|---|---|
+| Gate check fails on an integration branch | the coordinator maps the failure to a task by the failing path or test file owner (schedule `owns`); dispatches that implementer with `mode: fix-gate` on its task branch; re-merges; re-runs the gate. After 3 rounds: planner |
+| Failure cannot be attributed to one task | planner designs the fix; an implementer applies it on a branch `fix/<stage>-integration` merged into the integration branch |
+| `develop` CI red after an integration PR merged | the coordinator reverts the squash commit with a PR `revert: <title>` immediately, then treats it as a gate failure |
+| Deferred cluster step fails (G12) | gate-failure handling on a `fix/<slug>` branch into `develop`; the stage is not complete until G12 passes |
+| Subagent model unavailable | stop and ask the owner (CLAUDE.md) |
+
+### 7.9 Coordinator loop (per week)
+
+1. `uv run python scripts/swarm_schedule.py next --week <N>` prints the next runnable stage (all `after` stages complete per `.swarm/progress.json`).
+2. Run the stage per §7.5–§7.6 (parallel) or §7.5 + direct PRs (sequential).
+3. Record completion: `uv run python scripts/swarm_schedule.py done <stage>`; update `wiki/status.md`.
+4. Repeat until the week's last stage; then run the wave's **Acceptance** section and the release PR (MS-002), which also runs `e2e.yml` from week 6 on.

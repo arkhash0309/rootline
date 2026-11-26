@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 2: Fault Lab
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A `faultlab` service that generates the deterministic 300-scenario catalogue, injects faults through flag drift, Chaos Mesh and Git commits, captures redacted replayable snapshots, restores the baseline, and has captured ≥ 40 scenarios across all three channels.
 
@@ -16,6 +16,18 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - The agent must never be able to see ground truth (ARC-011, T10): Chaos CRs live in `rootline-lab`; commit messages obey LAB-022; snapshots contain only `shop` data.
 - No paid API calls this week.
 - Week 2 acceptance (MS-001): TST-LAB-001/005/007/010 pass; ≥ 40 scenarios captured across all 3 channels.
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 2); `uv run python scripts/swarm_schedule.py table --week 2` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W2-S1 | sequential | — | W2-T01 (`feat/w2-schemas`) | — |
+| W2-P1 | parallel | W2-S1 | W2-T02 (`feat/w2-db-lab-audit`); W2-T03 (`feat/w2-algorithms`); W2-T04 (`feat/w2-redaction`); W2-T05 (`feat/w2-catalog`) | — |
+| W2-P2 | parallel | W2-P1 | W2-T06 (`feat/w2-scenario-generator`); W2-T07 (`feat/w2-github-gitops`); W2-T08 (`feat/w2-k8s-injectors`) | W2-T07 steps 4 → W2-S2; W2-T08 steps 7 → W2-S2 |
+| W2-S2 | sequential | W2-P2 | W2-T09 (`feat/w2-snapshots`); W2-T10 (`feat/w2-orchestrator`); W2-T11 (`feat/w2-faultlab-deploy`); W2-T12 (`docs/w2-capture-runbooks`); W2-T13 (no branch) | — |
 
 ---
 
@@ -1649,7 +1661,7 @@ def test_committed_file_matches_generator() -> None:
 **Interfaces:**
 - Produces (overview §3.1): `GitHubApp`, `EnvRepo`, `CommitAuthor(name, email)`, `RevertConflict(Exception)`; `rootline_common.yamlio.load_docs(text) -> list[dict]`, `dump_docs(objs) -> str` (byte-identical to the W1-T09 renderer); `rootline_faultlab.injectors.git.mutate(files: dict[str, str], label: ScenarioLabel, ctx: GitContext) -> tuple[dict[str, str], str]` (returns changed files and the commit message); `GitContext(baseline_p95_working_set: dict[str,int], rng_seed: str)`.
 
-- [ ] **Step 1 [OWNER] (O-5): Create GitHub App `rootline-faultlab`** per `wiki/runbooks/github-apps.md`, which this step writes:
+- [ ] **Step 1: Write the `## rootline-faultlab` section of `wiki/runbooks/github-apps.md`** containing exactly these owner instructions (the owner performs them in step 4, O-5):
   1. github.com → Settings → Developer settings → GitHub Apps → New GitHub App. Name `rootline-faultlab-<owner suffix>` if the bare name is taken (record the actual name and its bot login `<slug>[bot]`); Homepage URL `https://github.com/arkhash0309/rootline`; Webhook: **inactive**; Repository permissions: Contents **Read and write**, Metadata **Read**; no other permissions; "Only on this account".
   2. Generate a private key (PEM download). Install the App on **only** `arkhash0309/rootline-env`.
   3. Put `GH_APP_FAULTLAB_ID`, `GH_APP_FAULTLAB_INSTALLATION_ID` (from the installation URL) and `GH_APP_FAULTLAB_PRIVATE_KEY` (PEM content, quoted multi-line) in `.env.local`. Never commit the PEM; delete the downloaded file after copying.
@@ -1734,7 +1746,7 @@ and that the commit message is one of the type's templates rendered, chosen by `
   - `gitops.py`: `read_file` via `GET /repos/{o}/{r}/contents/{path}?ref=` (base64 decode); `commit_files` via Git Data API: `GET /git/ref/heads/{branch}` → base commit → `GET /git/commits/{sha}` → base tree → `POST /git/blobs` per changed file (deletions as tree entries with `sha: null`) → `POST /git/trees` with `base_tree` → `POST /git/commits` with `author`/`committer` = `CommitAuthor` and `date` now → `PATCH /git/refs/heads/{branch}` (`force: false`); if the ref moved (`422`), raise `RefMoved`. `revert_tree(sha)`: for each file in `GET /commits/{sha}`: current blob at `main` must equal the file's blob in the commit (`status == "removed"` → must be absent), else `RevertConflict`; result content = file at parent (`None` if `status == "added"`). `list_commits(since)` via `GET /commits?sha=main&since=`; `commit_diff(sha)` via `GET /commits/{sha}` with `Accept: application/vnd.github.diff`; `tree_sha(commit)` = commit's `tree.sha`.
   - `injectors/git.py`: `mutate()` implements the table above with `yamlio.load_docs`/`dump_docs` on `workload/<target>.yaml` (G06 also edits that file), choosing the message as specified; restore message is exactly `Revert "<original message>"`.
 
-- [ ] **Step 4: Live check** (needs O-5): `uv run python -m rootline_faultlab.injectors.git --selftest` reads `.env.local`, gets an installation token, reads `workload/payment.yaml` at `main`, prints its blob SHA, and exits 0 without writing.
+- [ ] **Step 4 [OWNER] (O-5), deferred to W2-S2:** the owner creates and installs the App following the step-1 runbook section and fills `.env.local`; then the live check: `uv run python -m rootline_faultlab.injectors.git --selftest` reads `.env.local`, gets an installation token, reads `workload/payment.yaml` at `main`, prints its blob SHA, and exits 0 without writing.
 
 - [ ] **Step 5: Run tests, commit** `feat(py-common): add GitHub App client and env-repo operations` (+ `wiki/runbooks/github-apps.md`, `wiki/log.md`).
 
@@ -1939,6 +1951,8 @@ Demo mode (LAB-040/042): steps 0–3; status `demo_active`; restore on `restore(
 
 **Requirement IDs:** ARC-001 (faultlab), ARC-030, SEC-070 (faultlab), LAB-063, CI-001 (`images.yml`), CI-020, GEN-060 (`lab:capture`, `lab:pull`, `images`), INF-022.
 **Depends on:** W2-T10. **Branch:** `feat/w2-faultlab-deploy`.
+
+**Smoke registration (overview §7.7):** this task also creates `tests/smoke/faultlab.yaml` with an `http` check per Service (`faultlab`: namespace `rootline`, Service port `80`, path `/readyz`, `expect_status: 200`) and an `argocd_app` check `rootline` → `Synced/Healthy`; the coordinator's G12 run (`task smoke:cluster`) must pass.
 
 **Files:**
 - Create: `services/faultlab/Dockerfile`, `services/api/Dockerfile` (migrations only for now, entrypoint `alembic`)

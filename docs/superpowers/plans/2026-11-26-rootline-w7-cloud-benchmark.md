@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 7: Cloud and Benchmark
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reproducible, signed releases on GCP: a persistent Terraform root (state, artifacts, registry, WIF, budget) and an ephemeral cluster root that `task gke:up` turns into a working demo in ≤ 25 minutes and `task gke:down` removes completely; the full evaluation toolchain (report, judge, Langfuse sync, cost gate, ablations); sweep 1; the ITBench subset; T0 threshold calibration.
 
@@ -15,6 +15,18 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - **Every GKE session ends with `task gke:down`**; the S1 leak checks must print empty lists. Record each session's start/end and cost in `wiki/log.md` and `wiki/cost-ledger.md`.
 - Sweeps are owner-approved after the EVL-063 projection (O-13). Test-split results are viewed only in the final reports (EVL-011).
 - Week 7 acceptance (MS-001): S1 achieved (≤ 25 min; teardown clean); sweep-1 report generated; cost ledger within plan.
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 7); `uv run python scripts/swarm_schedule.py table --week 7` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W7-P1 | parallel | — | W7-T01 (`feat/w7-tf-persistent`); W7-T07 (`feat/w7-eval-complete`) | W7-T01 steps 3, 4 → W7-S1; W7-T01 pre-dispatch steps 1 (coordinator) |
+| W7-P2 | parallel | W7-P1 | W7-T02 (`feat/w7-tf-cluster`); W7-T03 (`feat/w7-release`); W7-T10 (`feat/w7-calibrate-t0`) | W7-T03 steps 2 → W7-S1; W7-T10 steps 2, 3 → W7-S1 |
+| W7-P3 | parallel | W7-P2 | W7-T04 (`feat/w7-kyverno-verify`); W7-T05 (`feat/w7-gke-tasks`); W7-T09 (`feat/w7-itbench`) | W7-T04 steps 2 → W7-S1; W7-T09 steps 3 → W7-S1 |
+| W7-S1 | sequential | W7-P3 | W7-T06 (`docs/w7-gke-runbooks`); W7-T08 (no branch) | — |
 
 ---
 
@@ -205,7 +217,8 @@ jobs:
 **Requirement IDs:** SEC-090 (`verify-rootline-images` Enforce on gke), T7.
 **Depends on:** W7-T03, W3-T12.
 
-- [ ] **Steps:** `policies/kyverno/verify-rootline-images.yaml` — `verifyImages` rule for `us-central1-docker.pkg.dev/{{gcpProject}}/rootline/*` with keyless attestor `subject: https://github.com/arkhash0309/rootline/.github/workflows/release.yml@refs/heads/main`, `issuer: https://token.actions.githubusercontent.com`, `rekor: {url: https://rekor.sigstore.dev}`, `mutateDigest: true`, `verifyDigest: true`, `validationFailureAction: Enforce`; rendered only for gke. Kyverno test with a signed and an unsigned reference (use `kyverno test` with `--registry` mocks or a recorded `imageVerify` response; if offline testing is not possible, mark the test `@gke` and run it during W7-T06). Live check on GKE: `kubectl run unsigned -n rootline --image=us-central1-docker.pkg.dev/<p>/rootline/api:unsigned-test` (push an unsigned tag manually) → denied. **Commit** `feat(policies): enforce signed Rootline images on GKE`.
+- [ ] **Step 1: Policy and offline test** — `policies/kyverno/verify-rootline-images.yaml`: `verifyImages` rule for `us-central1-docker.pkg.dev/{{gcpProject}}/rootline/*` with keyless attestor `subject: https://github.com/arkhash0309/rootline/.github/workflows/release.yml@refs/heads/main`, `issuer: https://token.actions.githubusercontent.com`, `rekor: {url: https://rekor.sigstore.dev}`, `mutateDigest: true`, `verifyDigest: true`, `validationFailureAction: Enforce`; rendered only for gke. Kyverno test with a signed and an unsigned reference using a recorded `imageVerify` response; if `kyverno test` cannot verify signatures offline on the pinned CLI, the test is marked `gke-only` in `policies/kyverno/tests/verify-rootline-images/README.md` and step 2 is its verification. **Commit** `feat(policies): enforce signed Rootline images on GKE`.
+- [ ] **Step 2: Live check on GKE** (deferred to W7-S1, during W7-T06): push an unsigned tag manually, `kubectl run unsigned -n rootline --image=us-central1-docker.pkg.dev/<p>/rootline/api:unsigned-test` → denied; record the output in `wiki/security/threat-model.md` (T7).
 
 ---
 
@@ -271,4 +284,6 @@ jobs:
 
 **Requirement IDs:** EVL-061, POL-030, ADR 0008.
 
-- [ ] **Steps:** on the latest dev `routed` run (dev iteration before sweep 2): `rootline-eval calibrate-t0 <run_id>` computes, for v ∈ {0.70, 0.75, …, 0.95}, among dev results with `confidence ≥ v` and a T0-eligible action type (`revert_commit`, `resync_app`, `restart`) the share with `fix_acceptable`; picks the smallest v with share ≥ 95% and ≥ 10 such results, else 0.95; writes `deploy/values/policy.yaml` `t0ConfidenceThreshold: <v>` and a table into ADR 0008; unit test on synthetic results. Commit `feat(eval): calibrate T0 confidence threshold`. Week 7 acceptance and `release: milestone 7`.
+- [ ] **Step 1: Code and unit test** — `rootline-eval calibrate-t0 <run_id>` computes, for v ∈ {0.70, 0.75, 0.80, 0.85, 0.90, 0.95}, among dev results with `confidence ≥ v` and a T0-eligible action type (`revert_commit`, `resync_app`, `restart`) the share with `fix_acceptable`; picks the smallest v with share ≥ 95% and ≥ 10 such results, else 0.95; prints the table; with `--write` writes `deploy/values/policy.yaml` `t0ConfidenceThreshold: <v>`. Unit test on synthetic results covering a qualifying value, the ≥ 10 rule and the 0.95 fallback. Commit `feat(eval): add T0 confidence threshold calibration`.
+- [ ] **Step 2: Calibrate** (deferred to W7-S1) on the latest dev `routed` run (the dev iteration before sweep 2): `rootline-eval calibrate-t0 <run_id> --write`; add the table to ADR 0008; commit on `feat/w7-calibrate-t0-deferred`.
+- [ ] **Step 3: Week 7 acceptance and release** (deferred to W7-S1, after W7-T08): acceptance checks and `release: milestone 7`.

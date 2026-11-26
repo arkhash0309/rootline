@@ -3728,6 +3728,7 @@ Implementers append rows here per §0.3.
 | 2026-11-26 | PG-13 (SEC-100): host and in-cluster Anthropic keys need different names. | `ANTHROPIC_API_KEY` = cluster key; `ROOTLINE_HOST_ANTHROPIC_API_KEY` = host key; CI uses `ANTHROPIC_API_KEY_CI`. | 0032 (written in W1-T04; details in plan overview §5) | planning commit |
 | 2026-11-26 | PG-14 (EVL-062): batch `custom_id` must match `^[a-zA-Z0-9_-]{1,64}$`. | `custom_id = "c" + sha256("<run_id>:<scenario_id>:<seq>")[:48]` with a persisted mapping file. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
 | 2026-11-26 | PG-15 (AGT-063): one system-block breakpoint does not cache the growing conversation. | Also send top-level automatic `cache_control`; measured by the week-4 cache check. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-16 (GEN-020, GEN-021, MS-001): parallel implementation needs a branch where several task branches are combined and verified before `develop`, and the spec does not say which models plan, build and review. | Owner instruction: parallel stages per `docs/superpowers/plans/2026-11-26-rootline-schedule.yaml`; task PRs merge into `integration/<stage>` branches that pass the integration gate (plan overview §7.7) and an integration review, then reach `develop` as one squash-merged PR. Coordinator Haiku 5.5; planner and reviewer Opus 5.5 high; implementer Sonnet 5.5 high (`CLAUDE.md`). | 0035 (written in W1-T04) | planning commit |
 
 ---
 

@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 3: Identity and MCP
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Keycloak with passkeys, LoA step-up, federated client authentication and RFC 8693 token exchange; three MCP servers (`rootline-telemetry`, `rootline-k8s`, `rootline-gitops` read tools) that are OAuth resource servers, run live against the cluster and in replay against snapshots with proven parity; GitHub Apps and rulesets; RBAC, NetworkPolicies and Kyverno; ≥ 150 scenarios captured.
 
@@ -18,12 +18,29 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 
 **Before starting:** read the Keycloak pages listed in spec §27 (token exchange, federated client authentication) and the Keycloak 26.8 release notes; record in `wiki/components/keycloak.md` the exact names of: the delegation preview feature flag, the client attribute enabling standard token exchange, the federated-JWT client authenticator ID and its attributes, and the Kubernetes identity-provider type. Every place below that names one of these uses the recorded value.
 
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 3); `uv run python scripts/swarm_schedule.py table --week 3` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W3-P1 | parallel | — | W3-T01 (`feat/w3-keycloak`); W3-T02 (`feat/w3-auth-lib`) | W3-T01 steps 4 → W3-S1 |
+| W3-P2 | parallel | W3-P1 | W3-T03 (`feat/w3-keycloak-tests`); W3-T05 (`feat/w3-mcpkit`); W3-T11 (`feat/w3-faultlab-api`) | W3-T03 steps 4 → W3-S2 |
+| W3-P3 | parallel | W3-P2 | W3-T06 (`feat/w3-mcp-telemetry`); W3-T07 (`feat/w3-mcp-k8s`); W3-T08 (`feat/w3-mcp-gitops-read`) | W3-T06 steps 4 → W3-S1; W3-T07 steps 3 → W3-S1; W3-T08 steps 3 → W3-S1 |
+| W3-P4 | parallel | W3-P3 | W3-T09 (`feat/w3-parity`); W3-T12 (`feat/w3-policies`) | W3-T09 steps 5 → W3-S1; W3-T12 steps 4 → W3-S3 |
+| W3-S1 | sequential | W3-P4 | W3-T04 (`feat/w3-federated-auth-test`) | — |
+| W3-S2 | sequential | W3-S1 | W3-T10 (`feat/w3-github-apps`); W3-T13 (`feat/w3-mcp-deploy`) | — |
+| W3-S3 | sequential | W3-S2 | W3-T14 (no branch) | — |
+
 ---
 
 ### Task W3-T01: Keycloak deployment and the `rootline` realm
 
 **Requirement IDs:** SEC-010, SEC-011, SEC-012, SEC-020, SEC-021, SEC-022, SEC-030, SEC-031, SEC-032, SEC-033, SEC-100 (keycloak secrets), ARC-030.
 **Depends on:** W2 complete. **Branch:** `feat/w3-keycloak`.
+
+**Smoke registration (overview §7.7):** this task also creates `tests/smoke/keycloak.yaml` with an `http` check per Service (`keycloak`: namespace `keycloak`, Service port `8080`, path `/realms/rootline/.well-known/openid-configuration`, `expect_status: 200`) and an `argocd_app` check `keycloak` → `Synced/Healthy`; the coordinator's G12 run (`task smoke:cluster`) must pass. The smoke file is created in step 4 (deferred), when the deployment exists.
 
 **Files:**
 - Create: `deploy/charts/keycloak/{Chart.yaml,values.yaml,values-gke.yaml,values-ci.yaml}`, `templates/{deployment,service,httproute,serviceaccount,clusterrolebinding,externalsecrets,networkpolicy,config-job,realm-configmap}.yaml`
@@ -107,8 +124,8 @@ The test file provides a `realm` fixture that runs `helm template` on the keyclo
   - NetworkPolicy in `keycloak`: ingress 8080 from `kube-system`/`traefik` (Traefik) and `rootline`; 9000 from `observability`; egress Postgres 5432, kube-apiserver (issuer discovery/JWKS, local), DNS, and 443 to the internet (gke issuer JWKS).
   - `coredns-custom` already maps `auth.D` (W1-T10). Pods calling `https://auth.D` mount ConfigMap `rootline-ca` at `/etc/rootline/ca` and set `SSL_CERT_FILE=/etc/rootline/ca/ca.crt` (SEC-011).
 
-- [ ] **Step 4: Deploy and smoke-check** — enable the app, `task up REVISION=feat/w3-keycloak`; `curl --cacert data/rootline-ca.crt https://auth.127.0.0.1.sslip.io/realms/rootline/.well-known/openid-configuration` returns issuer `https://auth.127.0.0.1.sslip.io/realms/rootline`; log in to the account console as `owner` in the browser and register a passkey (Windows Hello). Record both in `wiki/components/keycloak.md` and fill `wiki/runbooks/recovery.md#keycloak-lockout-break-glass` (log in as `breakglass` with password + TOTP; it has `admin` but not `approver`).
-- [ ] **Step 5: Run tests, update `capacity.md`, commit** `feat(deploy): add Keycloak with the rootline realm`.
+- [ ] **Step 4: Deploy and smoke-check** — enable the app, `task up REVISION=feat/w3-keycloak`; `curl --cacert data/rootline-ca.crt https://auth.127.0.0.1.sslip.io/realms/rootline/.well-known/openid-configuration` returns issuer `https://auth.127.0.0.1.sslip.io/realms/rootline`; log in to the account console as `owner` in the browser and register a passkey (Windows Hello). Record both in `wiki/components/keycloak.md`, fill `wiki/runbooks/recovery.md#keycloak-lockout-break-glass` (log in as `breakglass` with password + TOTP; it has `admin` but not `approver`), and update `wiki/components/capacity.md` with the new memory total.
+- [ ] **Step 5: Run tests and commit** `feat(deploy): add Keycloak with the rootline realm` (made after step 3 when step 4 is deferred, overview §7.3).
 
 ---
 
@@ -331,6 +348,7 @@ class TokenValidator:
 
 **Files:**
 - Create: `libs/py-mcpkit/rootline_mcpkit/{windows,errors,limits,tooldef,server,auth,ratelimit,snapshot,migrations,metrics}.py`
+- Create: `tests/fixtures/make_snapshot.py` and its committed output `tests/fixtures/snapshot/` — the one shared synthetic snapshot used by W3-T06, W3-T07, W3-T08, W3-T13 and week-4 tests, written with `SnapshotWriter` (W2-T09): services `payment`, `cart`, `checkout`; 20 min of every metric key at 15 s with an `error_ratio` spike on `payment` in minutes 15–18; 300 log lines (3 templates); 20 traces, 2 with error spans on `payment`; 1 firing alert `ServiceHighErrorRate` on `payment`; `k8s/objects.json` with Deployments `payment` and `cart`, StatefulSet `valkey-cart`, their ReplicaSets, 3 Pods (one `cart` pod in `CrashLoopBackOff`), Services, ConfigMap `flagd-config`, NetworkPolicies, Application `workload` OutOfSync on `ConfigMap/flagd-config`; `k8s/events.json` with 5 events; `k8s/pod_logs/payment-abc-123__payment.log` (contains a literal `password=hunter2` line); `git/commits.json` with 3 commits (baseline, fault on `payment`, revert) and their diffs; `argocd/app.json`; `parity: false`. `make_snapshot.py --check` regenerates into a temp dir and fails on any difference.
 - Test: `libs/py-mcpkit/tests/{test_windows,test_limits,test_server,test_auth_http,test_snapshot}.py`
 
 **Interfaces:** overview §3.3.
@@ -540,7 +558,7 @@ def build_app(*, name: str, version: str, tools: Sequence[ToolDef], scopes_suppo
 
 **Files:**
 - Create: `services/mcp-telemetry/rootline_mcp_telemetry/{backend,live,replay,tools,models,app}.py`
-- Test: `services/mcp-telemetry/tests/{test_tools_replay.py,test_scoping.py,test_live_queries.py}`, fixture snapshot `services/mcp-telemetry/tests/fixtures/snap/` (a small synthetic snapshot produced by `tests/fixtures/make_snapshot.py` using `SnapshotWriter`: 3 services, 20 min of metrics with a spike on `payment`, 300 log lines, 20 traces with 2 errors, 1 alert)
+- Test: `services/mcp-telemetry/tests/{test_tools_replay.py,test_scoping.py,test_live_queries.py}`; fixture: the shared snapshot `tests/fixtures/snapshot/` created by W3-T05
 
 **Interfaces:**
 - Produces: `TelemetryBackend` Protocol —
@@ -602,8 +620,9 @@ Every input model has `ConfigDict(extra="forbid")`; no field accepts a namespace
 - `get_argocd_app`: from the Application object: `sync_status`, `health_status`, `revision` (`status.sync.revision`), `history` (last 10, newest first), `out_of_sync` = resources with `status != "Synced"`, `degraded` = resources with `health.status == "Degraded"` (with `health.message`).
 - Scope `k8s:read` for all eight tools.
 
-- [ ] **Step 1: Failing tests** — fixture snapshot from W3-T06 extended with `k8s/objects.json` (2 Deployments `payment`, `cart`; 1 StatefulSet `valkey-cart`; ReplicaSets; 3 Pods with one CrashLoopBackOff; Services; ConfigMap `flagd-config`; NetworkPolicies; Application `workload` OutOfSync on `ConfigMap/flagd-config`), `events.json` (5 events), `pod_logs/payment-abc-123__payment.log`. Assertions: schemas and sort orders; `describe_workload(Deployment, payment)` shows `{"name": "API_TOKEN", "value_from": "secret:payment-secrets/token"}` and redacts a literal `password=hunter2`; `get_pod_logs("faultlab-xyz")` → `not_found`; `describe_workload(kind="Secret", …)` → `invalid_argument`; an extra `namespace` field → `invalid_argument`; `LiveK8s` with a fake API client records only calls with namespace `shop` (or `argocd`/`workload` for the Application, and cluster-scoped Nodes).
-- [ ] **Step 2: Implement; live smoke** against the cluster; **commit** `feat(mcp-k8s): add Kubernetes MCP server`.
+- [ ] **Step 1: Failing tests** — the shared fixture snapshot `tests/fixtures/snapshot/` (W3-T05), whose `k8s/objects.json` contains (2 Deployments `payment`, `cart`; 1 StatefulSet `valkey-cart`; ReplicaSets; 3 Pods with one CrashLoopBackOff; Services; ConfigMap `flagd-config`; NetworkPolicies; Application `workload` OutOfSync on `ConfigMap/flagd-config`), `events.json` (5 events), `pod_logs/payment-abc-123__payment.log`. Assertions: schemas and sort orders; `describe_workload(Deployment, payment)` shows `{"name": "API_TOKEN", "value_from": "secret:payment-secrets/token"}` and redacts a literal `password=hunter2`; `get_pod_logs("faultlab-xyz")` → `not_found`; `describe_workload(kind="Secret", …)` → `invalid_argument`; an extra `namespace` field → `invalid_argument`; `LiveK8s` with a fake API client records only calls with namespace `shop` (or `argocd`/`workload` for the Application, and cluster-scoped Nodes).
+- [ ] **Step 2: Implement and commit** `feat(mcp-k8s): add Kubernetes MCP server`.
+- [ ] **Step 3: Live smoke** (deferred to W3-S1): call every tool once through in-process `dispatch()` with `LiveK8s` against the running cluster and record output sizes in `wiki/components/mcp-k8s.md`.
 
 ---
 
@@ -620,7 +639,9 @@ Every input model has `ConfigDict(extra="forbid")`; no field accepts a namespace
 - `get_proposal_status`: returns `not_found` until W5-T03 wires it to `api`.
 - Scopes: `gitops:read` for these three; `propose_fix` (scope `gitops:propose`) is added in W5-T03.
 
-- [ ] **Steps:** failing replay tests against fixture `git/commits.json` + `git/diffs/*.diff` (3 commits: baseline, fault, revert) → implement → live smoke → commit `feat(mcp-gitops): add read-only GitOps MCP tools`.
+- [ ] **Step 1: Failing replay tests** against the shared fixture's `git/commits.json` and `git/diffs/*.diff` (3 commits: baseline, fault, revert): sort order, `short_sha`, `workload` mapping, 24 h maximum window, ambiguous and unknown SHA errors, diff truncation marker.
+- [ ] **Step 2: Implement and commit** `feat(mcp-gitops): add read-only GitOps MCP tools`.
+- [ ] **Step 3: Live smoke** (deferred to W3-S1): call the three tools through in-process `dispatch()` with the live backend against `rootline-env` and record results in `wiki/components/mcp-gitops.md`.
 
 ---
 
@@ -700,6 +721,8 @@ Every input model has `ConfigDict(extra="forbid")`; no field accepts a namespace
 
 **Requirement IDs:** ARC-001 (mcp-*), ARC-030, SEC-033, SEC-051, MCP-051, OBS-002.
 **Depends on:** W3-T06 … W3-T12. **Branch:** `feat/w3-mcp-deploy`.
+
+**Smoke registration (overview §7.7):** this task also creates `tests/smoke/mcp-telemetry.yaml`, `tests/smoke/mcp-k8s.yaml` and `tests/smoke/mcp-gitops.yaml`, each with one `http` check (namespace `rootline`, Service = the component name, port 80, path `/.well-known/oauth-protected-resource`, `expect_status: 200`) and an `argocd_app` check `rootline` → `Synced/Healthy`; the coordinator's G12 run (`task smoke:cluster`) must pass.
 
 **Files:**
 - Create: `services/mcp-{telemetry,k8s,gitops}/Dockerfile` (W2-T11 pattern), `deploy/charts/rootline/templates/mcp-{telemetry,k8s,gitops}/{deployment,service,serviceaccount}.yaml`

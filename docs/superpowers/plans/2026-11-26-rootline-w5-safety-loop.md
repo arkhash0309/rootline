@@ -1,6 +1,6 @@
 # Rootline Implementation Plan — Week 5: Safety Loop
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute this week with the swarm protocol in `2026-11-26-rootline-00-overview.md` §7: the Haiku 5.5 coordinator runs the stages in the **Execution schedule** below, dispatching Sonnet 5.5 implementers (high effort, one worktree per task in parallel stages), Opus 5.5 reviewers (high effort) and, when re-planning is needed, the Opus 5.5 planner (high effort) — `CLAUDE.md` → "Agent models and roles". Within each task, follow superpowers:subagent-driven-development's discipline (implement → spec-compliance review → code-quality review). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The agent proposes typed fixes through `mcp-gitops.propose_fix`; the gate classifies each proposal with OPA (T0/T1/T2/DENIED), auto-merges T0, waits for passkey-backed approvals for T1/T2, merges, syncs ArgoCD and verifies recovery; approvals and every state change are audited and verifiable; incident memory is written on verified fixes; capture reaches 300 scenarios.
 
@@ -15,6 +15,18 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - Default-deny: any OPA error, timeout (2 s) or missing field results in tier `DENIED` with reason `policy_error` (SEC-001).
 - The agent App is never a ruleset bypass actor (T6); only the gate merges.
 - Week 5 acceptance (MS-001): TST-POL-*, TST-API-001, TST-SEC-035 pass; manual demo of a T0 auto-merge and a T1 approval (via the API) verified on local; capture complete (300, S3).
+
+
+## Execution schedule
+
+Mirrors `2026-11-26-rootline-schedule.yaml` (week 5); `uv run python scripts/swarm_schedule.py table --week 5` must print exactly this table. Parallel stages run in separate worktrees (at most 3 implementers at once), then pass the integration gate (overview §7.6–§7.7) before one squash-merged PR reaches `develop`. Owned paths per task are listed in the YAML only. Deferred steps (overview §7.3) run at the start of the named sequential stage.
+
+| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |
+|---|---|---|---|---|
+| W5-P1 | parallel | — | W5-T01 (`feat/w5-policy`); W5-T04 (`feat/w5-api-proposals`) | — |
+| W5-P2 | parallel | W5-P1 | W5-T02 (`feat/w5-render-and-input`); W5-T06 (`feat/w5-memory`); W5-T07 (`feat/w5-audit-verify`) | — |
+| W5-P3 | parallel | W5-P2 | W5-T03 (`feat/w5-propose-fix`); W5-T05 (`feat/w5-gate`) | — |
+| W5-S1 | sequential | W5-P3 | W5-T08 (`feat/w5-gate-deploy`); W5-T09 (no branch) | — |
 
 ---
 
@@ -382,7 +394,7 @@ Agent `plan_fix` (AGT-026): after `FixPlan`, call `propose_fix` with `{incident_
 **Depends on:** W5-T04. **Branch:** `feat/w5-memory`.
 
 - [ ] **Step 1: Migration `0005_memory_vector`** — `CREATE EXTENSION IF NOT EXISTS vector;` then `core.incident_memory` and its HNSW index verbatim (§13.4); grants to `rootline_api`. (`CREATE EXTENSION` needs superuser: CNPG `postInitApplicationSQL` creates the extension at cluster init in `rootline`; add `postInitApplicationSQL: ["CREATE EXTENSION IF NOT EXISTS vector"]` to the Postgres chart; the migration's `IF NOT EXISTS` then succeeds as `rootline_migrator`. The testcontainers fixture runs the same statement as superuser before migrating.)
-- [ ] **Step 2: Embedder** — `rootline_common.embed.Embedder` wrapping `fastembed.TextEmbedding("BAAI/bge-small-en-v1.5", cache_dir=<ROOTLINE_EMBED_CACHE, default /app/models>)`; `embed(text) -> list[float]` (384, L2-normalised); the api Dockerfile downloads the model at build time into `/app/models` (`RUN /app/.venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/app/models')"`). Measure api memory after load; if the api pod exceeds its 384 Mi limit, raise its limit to 512 Mi and request to 256 Mi, recompute the S2 total, and record an ADR (ARC-030 deviation).
+- [ ] **Step 2: Embedder** — `rootline_common.embed.Embedder` wrapping `fastembed.TextEmbedding("BAAI/bge-small-en-v1.5", cache_dir=<ROOTLINE_EMBED_CACHE, default /app/models>)`; `embed(text) -> list[float]` (384, L2-normalised); the api Dockerfile downloads the model at build time into `/app/models` (`RUN /app/.venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/app/models')"`). The memory check of the api pod with the model loaded is done in W5-T08 step 3 (cluster step).
 - [ ] **Step 3: Write path (AGT-091)** — in `api`, on incident status `resolved` with a `verified` proposal and a `diagnosed` investigation: text exactly AGT-090 (`"Root cause: <entity> (<category>). Summary: <summary[:600]>. Fix: <action type> <params as k=v joined by space>. Outcome: verified."`), embedding, `source = "production"`.
 - [ ] **Step 4: Read path (AGT-092)** — `POST /internal/v1/memory/search {text}` (azp `rootline-agent`) → top-3 by cosine distance with similarity ≥ 0.75 (`1 - (embedding <=> :q) >= 0.75`), returning `{id, text, similarity}`; the agent's `triage` calls it with query text = trigger text + top 3 anomalies (`"<service> <metric> <direction>"` joined by `; `) and wraps hits per AGT-092. Agent setting `AGENT_MEMORY=on` in-cluster (default on).
 - [ ] **Step 5: Eval isolation (AGT-093)** — `rootline_eval.memory.InMemoryStore` with numpy cosine; `--memory on` builds it from the same sweep's `routed` dev results whose `top1_correct and action_acceptable`, text built the same way (`Outcome: verified`); only test-split scenarios query it; with memory off, `triage` gets no hits. Test: with memory off no `memory` data block appears in the triage prompt; with memory on a test scenario gets hits only from dev results.
@@ -406,9 +418,11 @@ Agent `plan_fix` (AGT-026): after `FixPlan`, call `propose_fix` with `{incident_
 **Requirement IDs:** ARC-001 (gate), POL-041, SEC-120 (gate rows), SEC-090 (allowed-upstream OPA image).
 **Depends on:** W5-T05. **Branch:** `feat/w5-gate-deploy`.
 
+**Smoke registration (overview §7.7):** this task also creates `tests/smoke/gate.yaml` with an `http` check per Service (`gate`: namespace `rootline`, Service port `80`, path `/readyz`, `expect_status: 200`) and an `argocd_app` check `rootline` → `Synced/Healthy`; the coordinator's G12 run (`task smoke:cluster`) must pass.
+
 - [ ] **Step 1: Image** — `services/gate/Dockerfile` (W2-T11 pattern) also copies `policies/opa/` into `/app/policies` and runs `opa build -b /app/policies -o /app/policies/bundle.tar.gz` in a build stage using the `opa-image` from `versions.yaml` (`COPY --from=<opa-image> /opa /usr/local/bin/opa` in the builder stage).
 - [ ] **Step 2: Chart** — Deployment `gate`: init container (gate image, command `["cp", "/app/policies/bundle.tar.gz", "/policies/"]`) into `emptyDir` `/policies`; container `gate` (port 8080, env: `API_BASE`, `ARGOCD_SERVER`, `ARGOCD_TOKEN` from `argocd-api-tokens.gate`, `github-app-gate` secret, `GITOPS_AGENT_BOT_LOGIN`, `GITOPS_GATE_BOT_LOGIN`, `OWNER_GITHUB_LOGIN=arkhash0309`, `T0_CONFIDENCE_THRESHOLD` from `deploy/values/policy.yaml` (default 0.8), `CONSOLE_BASE_URL`, projected Keycloak token for `api:internal`); sidecar `opa` (image `openpolicyagent/opa@<digest>`, args `["run", "--server", "--addr=127.0.0.1:8181", "--bundle", "/policies/bundle.tar.gz"]`, resources 64Mi/128Mi, readiness `GET http://127.0.0.1:8181/health?bundles`); SA `gate` with no RoleBindings; NetworkPolicy rows from SEC-120 (egress to api, ArgoCD server, GitHub 443, Traefik for Keycloak, DNS; ingress from api on 8080 and observability on 8080).
-- [ ] **Step 3: Deploy, verify readiness, update `capacity.md`; commit** `feat(deploy): deploy gate with OPA sidecar`.
+- [ ] **Step 3: Deploy, verify readiness, update `capacity.md`; commit** `feat(deploy): deploy gate with OPA sidecar`. Also measure the `api` pod's memory with the embedding model loaded (W5-T06): `kubectl -n rootline top pod -l app.kubernetes.io/name=api`; if it exceeds the 384 Mi limit, raise the limit to 512 Mi and the request to 256 Mi, recompute the S2 total, and record an ADR (ARC-030 deviation).
 
 ---
 
