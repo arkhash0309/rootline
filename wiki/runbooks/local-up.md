@@ -20,9 +20,9 @@ Commit authorship by phase:
 | Phase | Who commits | Identity | Requirement |
 |---|---|---|---|
 | Until ruleset `protect-main` exists (week 3) | the owner, from the local clone, for the README (`35d4916`), the workload render and tag `baseline-v1` (W1-T09 Step 7) | owner git identity | GEN-010, SEC-081 |
-| From ruleset `protect-main` (week 3) | GitHub App `rootline-agent` and `rootline-gate` (agent and gate commits), GitHub App `rootline-faultlab` (Fault Lab git faults) | the App bot identity | SEC-080, SEC-081 |
-| Fault Lab git faults | author `deploy-bot <deploy-bot@users.noreply.rootline.dev>` (LAB-022) | App bot | LAB-022 |
+| From ruleset `protect-main` (week 3) | GitHub App `rootline-agent` and `rootline-gate` (agent and gate commits) | the App bot identity | SEC-080, SEC-081 |
+| From O-5 (week 2, overview §5 PG-3) | the Fault Lab, with the `rootline-faultlab` installation token, pushing directly to `main`; from week 3 the same author pushes as the `protect-main` bypass actor | commit author `deploy-bot <deploy-bot@users.noreply.rootline.dev>` | LAB-022, SEC-080, SEC-081, PG-3 |
 | Owner bypass | repository admin only, as the bypass actor of `protect-main` | owner git identity | SEC-081 |
 
-Status: GitOps repository created 2026-11-27 with README commit 35d4916. Workload files `workload/*.yaml`, `.rootline/baseline.json` and tag `baseline-v1` arrive in W1-T09. Section `## GitOps repositories` is kept unchanged by W1-T12; other sections are added there.
+Status: GitOps repository created 2026-11-26 with README commit 35d4916. Workload files `workload/*.yaml`, `.rootline/baseline.json` and tag `baseline-v1` arrive in W1-T09. Section `## GitOps repositories` is kept unchanged by W1-T12; other sections are added there.
 
