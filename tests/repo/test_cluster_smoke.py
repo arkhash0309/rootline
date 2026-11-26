@@ -3,6 +3,7 @@
 import http.server
 import json
 import os
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -351,7 +352,7 @@ def test_port_forward_that_prints_nothing_times_out_and_fails_the_check(
 ) -> None:
     """PG-16: the 30 s readiness deadline holds even when kubectl prints nothing (shortened to 0.3 s)."""
     process = SilentProcess()
-    monkeypatch.setattr(cs.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
     monkeypatch.setattr(cs, "PORT_FORWARD_READY_TIMEOUT_S", 0.3)
     started = time.monotonic()
     outcome = cs.run_check("api", {**HTTP_CHECK, "expect_status": 200}, cs.RealBackend(), "c")
