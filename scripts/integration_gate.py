@@ -45,9 +45,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.check_ownership import always_allowed_ok
 from scripts.proc import run
-from scripts.swarm_lib import REPO, Schedule, Stage, is_owned, load_schedule, matches
+from scripts.swarm_lib import REPO, Schedule, Stage, load_schedule
 
 TAIL_LINES = 40
 COMMAND_TIMEOUT_S = 3600
@@ -198,46 +197,35 @@ def aggregate(
 
 
 def g1_ownership(ctx: GateContext) -> CheckResult:
-    """G1 on an integration branch (overview §7.4 and §7.7).
+    """G1 on an integration branch (overview §7.4 and §7.7, ADR 0040 item 7, PG-21).
 
-    Every path in `git diff --name-only --no-renames -z <base>...<head>` MUST be owned (`owns` minus
-    `excludes`) by at least one task of the stage, or match `always_allowed` and satisfy that path's
-    special rule (`scripts/check_ownership.py`). A task is never blamed for a sibling's files; the per-task
-    check on a task branch is `scripts/check_ownership.py --task`.
+    Runs `uv run python scripts/check_ownership.py --stage <stage id> --base <base sha> --branch <head sha>`
+    in the coordinator repository (`ctx.repo`). The ownership rule lives only in `check_ownership.py`;
+    this gate holds no copy of it. `pass` on exit 0; `fail` with reason `exit <code>` on exit 1 or 2, with
+    the CLI's stdout and stderr (the `ownership: <path> not owned by any task of <stage>` lines) as the
+    last `TAIL_LINES` lines of `output_tail`. A sequential stage is `skip`.
     """
     name = "G1 ownership"
     if ctx.stage.mode != "parallel":
         return skip(name, f"stage {ctx.stage.id} is sequential")
-    diff = ctx.run(
-        ["git", "diff", "--name-only", "--no-renames", "-z", f"{ctx.base_sha}...{ctx.head_sha}"], ctx.repo
+    result = ctx.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/check_ownership.py",
+            "--stage",
+            ctx.stage.id,
+            "--base",
+            ctx.base_sha,
+            "--branch",
+            ctx.head_sha,
+        ],
+        ctx.repo,
     )
-    if diff.returncode != 0:
-        return CheckResult(name, "fail", f"git diff exit {diff.returncode}", 0.0, tail(diff.output))
-    paths = [path for path in diff.stdout.split("\0") if path]
-    if not paths:
-        return CheckResult(name, "pass", "no changed paths")
-    merge_base = ctx.run(["git", "merge-base", ctx.base_sha, ctx.head_sha], ctx.repo)
-    if merge_base.returncode != 0:
-        return CheckResult(
-            name, "fail", f"git merge-base exit {merge_base.returncode}", 0.0, tail(merge_base.output)
-        )
-
-    def read(ref: str, path: str) -> str | None:
-        shown = ctx.run(["git", "show", f"{ref}:{path}"], ctx.repo)
-        return shown.stdout if shown.returncode == 0 else None
-
-    offenders = []
-    for path in paths:
-        if any(is_owned(task, path) for task in ctx.stage.tasks):
-            continue
-        if matches(path, ctx.schedule.always_allowed) and always_allowed_ok(
-            ctx.repo, path, merge_base.stdout.strip(), ctx.head_sha, read
-        ):
-            continue
-        offenders.append(f"ownership: {path} not owned by any task of {ctx.stage.id}")
-    if offenders:
-        return CheckResult(name, "fail", "; ".join(offenders), 0.0, tail("\n".join(offenders)))
-    return CheckResult(name, "pass")
+    if result.returncode == 0:
+        return CheckResult(name, "pass", "", 0.0, tail(result.output))
+    return CheckResult(name, "fail", f"exit {result.returncode}", 0.0, tail(result.output))
 
 
 # ---- G2 lockfiles -------------------------------------------------------------------------------

@@ -1,13 +1,15 @@
 """Verifies PG-16 (overview §7.7 gate checks G1 to G11, report shape and exit codes), TST-002, TST-010."""
 
 import json
-import subprocess
+import shutil
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from scripts import integration_gate as gate
+from scripts import proc
 from scripts.integration_gate import CmdResult
 from scripts.swarm_lib import Schedule, Stage, TaskEntry, Week, load_schedule
 
@@ -166,21 +168,43 @@ def test_sequential_stage_skips_ownership(dirs: tuple[Path, Path]) -> None:
     assert (result.status, result.reason) == ("skip", "stage W1-S1 is sequential")
 
 
-def git_repo(root: Path, files: dict[str, str]) -> tuple[Path, str, str]:
-    """A real git repo with one base commit and one integration commit adding `files`; (repo, base, head)."""
+SCHEDULE_YAML = """version: 1
+max_parallel_implementers: 3
+always_allowed:
+{always_allowed}
+weeks:
+  - week: 9
+    stages:
+      - id: W9-P1
+        mode: parallel
+        after: []
+        tasks:
+          - {{id: W9-T01, branch: feat/a, owns: ["a/**"]}}
+          - {{id: W9-T02, branch: feat/b, owns: ["b/**"]}}
+"""
+
+
+def git_repo(root: Path, files: dict[str, str], always_allowed: list[str]) -> tuple[Path, str, str]:
+    """A real git repo with one base commit and one integration commit adding `files`; (repo, base, head).
+
+    The base commit holds a copy of `scripts/` and the schedule of stage W9-P1 (tasks W9-T01 owning `a/**`
+    and W9-T02 owning `b/**`), so that `scripts/check_ownership.py` run inside the repository reads this
+    schedule through its own `REPO` and `SCHEDULE_PATH` constants.
+    """
     root.mkdir(parents=True)
 
     def git(*args: str) -> str:
-        done = subprocess.run(  # noqa: S603
-            ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        done = proc.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args])
         return done.stdout.strip()
 
     git("init", "-q", "-b", "main")
     touch(root, "README.md")
+    shutil.copytree(REPO / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+    touch(
+        root,
+        "docs/superpowers/plans/2026-11-26-rootline-schedule.yaml",
+        SCHEDULE_YAML.format(always_allowed="\n".join(f"  - {glob!r}" for glob in always_allowed)),
+    )
     git("add", "-A")
     git("commit", "-q", "-m", "base")
     base = git("rev-parse", "HEAD")
@@ -192,11 +216,11 @@ def git_repo(root: Path, files: dict[str, str]) -> tuple[Path, str, str]:
     return root, base, git("rev-parse", "HEAD")
 
 
-def parallel_schedule(always_allowed: list[str]) -> Schedule:
+def parallel_schedule() -> Schedule:
     return Schedule(
         version=1,
         max_parallel_implementers=3,
-        always_allowed=always_allowed,
+        always_allowed=[],
         weeks=[
             Week(
                 9,
@@ -215,11 +239,22 @@ def parallel_schedule(always_allowed: list[str]) -> Schedule:
     )
 
 
+def real_cli_runner(cmd: object, cwd: Path, input_text: str | None = None) -> CmdResult:
+    """Run the command for real, with `uv run python` replaced by the interpreter of the test run.
+
+    `uv run` would resolve the project of the temporary repository, which has no `pyproject.toml`; the
+    script itself, its arguments, its working directory and its exit code are unchanged.
+    """
+    command = list(cmd)  # type: ignore[call-overload]
+    assert command[:3] == ["uv", "run", "python"]
+    return gate.default_runner([sys.executable, *command[3:]], cwd, input_text)
+
+
 def g1_on_real_repo(
     tmp_path: Path, files: dict[str, str], always_allowed: list[str] | None = None
 ) -> gate.CheckResult:
-    repo, base, head = git_repo(tmp_path / "repo", files)
-    schedule = parallel_schedule(always_allowed or [])
+    repo, base, head = git_repo(tmp_path / "repo", files, always_allowed or [])
+    schedule = parallel_schedule()
     stage = schedule.get_stage("W9-P1")
     assert stage is not None
     ctx = gate.GateContext(
@@ -233,49 +268,84 @@ def g1_on_real_repo(
         base_workdir=None,
         repo=repo,
         pr_body="",
-        runner=gate.default_runner,
+        runner=real_cli_runner,
         which=all_tools,
     )
     return gate.g1_ownership(ctx)
 
 
 def test_g1_passes_when_every_integration_path_is_owned_by_some_task_of_the_stage(tmp_path: Path) -> None:
-    """PG-16, overview §7.4: sibling tasks' files are not blamed on each other on the integration branch."""
+    """PG-16, PG-21, ADR 0040 item 7: sibling tasks' files are not blamed on each other; real CLI."""
     result = g1_on_real_repo(tmp_path, {"a/x.py": "1\n", "b/y.py": "2\n"})
-    assert (result.status, result.reason) == ("pass", "")
+    assert (result.status, result.reason, result.output_tail) == ("pass", "", "")
 
 
 def test_g1_fails_for_a_path_owned_by_no_task_of_the_stage(tmp_path: Path) -> None:
-    """PG-16, overview §7.4: an unowned path fails G1 with the stage named in the message."""
+    """PG-16, PG-21, ADR 0040 item 7: an unowned path exits 1 and the CLI line is in `output_tail`."""
     result = g1_on_real_repo(tmp_path, {"a/x.py": "1\n", "b/y.py": "2\n", "c/x.py": "3\n"})
     assert result.status == "fail"
-    assert result.reason == "ownership: c/x.py not owned by any task of W9-P1"
+    assert result.reason == "exit 1"
+    assert result.output_tail == "ownership: c/x.py not owned by any task of W9-P1"
 
 
 def test_g1_accepts_always_allowed_paths_only_when_their_special_rule_holds(tmp_path: Path) -> None:
-    """PG-16, overview §7.4: `wiki/log.md` has no rule; `**/__init__.py` must be an empty marker."""
+    """PG-16, PG-21, ADR 0040 item 7: `wiki/log.md` has no rule; `**/__init__.py` must be an empty marker."""
     allowed = ["wiki/log.md", "**/__init__.py"]
     ok = g1_on_real_repo(
         tmp_path / "ok", {"a/x.py": "1\n", "wiki/log.md": "e\n", "c/__init__.py": ""}, allowed
     )
-    assert ok.status == "pass"
+    assert (ok.status, ok.reason) == ("pass", "")
     code = g1_on_real_repo(tmp_path / "code", {"c/__init__.py": "import os\nVALUE = 1\n"}, allowed)
-    assert code.reason == "ownership: c/__init__.py not owned by any task of W9-P1"
+    assert code.reason == "exit 1"
+    assert code.output_tail == "ownership: c/__init__.py not owned by any task of W9-P1"
 
 
-def test_g1_is_skipped_for_a_sequential_stage_and_passes_on_an_empty_diff(dirs: tuple[Path, Path]) -> None:
-    sequential = by_name(run_gate("W1-S1", dirs, FakeRunner()), "G1 ownership")
-    assert sequential.status == "skip"
-    parallel = by_name(run_gate("W1-P1", dirs, FakeRunner()), "G1 ownership")
-    assert (parallel.status, parallel.reason) == ("pass", "no changed paths")
+def test_g1_runs_the_stage_cli_in_the_coordinator_repository(dirs: tuple[Path, Path]) -> None:
+    """PG-21, ADR 0040 item 7: G1 is exactly the `--stage` CLI call, run in `ctx.repo`; exit 0 is `pass`."""
+    runner = FakeRunner()
+    result = by_name(run_gate("W1-P1", dirs, runner), "G1 ownership")
+    assert (result.status, result.reason) == ("pass", "")
+    command = [
+        "uv",
+        "run",
+        "python",
+        "scripts/check_ownership.py",
+        "--stage",
+        "W1-P1",
+        "--base",
+        "b" * 40,
+        "--branch",
+        "h" * 40,
+    ]
+    assert [call for call in runner.calls if call[0][:4] == command[:4]] == [(command, REPO)]
 
 
-def test_g1_fails_when_git_diff_fails(dirs: tuple[Path, Path]) -> None:
-    def broken(cmd: list[str], cwd: Path) -> CmdResult | None:
-        return CmdResult(128, "", "fatal: bad revision\n") if cmd[:2] == ["git", "diff"] else None
+def test_g1_is_skipped_for_a_sequential_stage(dirs: tuple[Path, Path]) -> None:
+    """PG-21, ADR 0040 item 7: a sequential stage is `skip` and the CLI is not run."""
+    runner = FakeRunner()
+    sequential = by_name(run_gate("W1-S1", dirs, runner), "G1 ownership")
+    assert (sequential.status, sequential.reason) == ("skip", "stage W1-S1 is sequential")
+    assert not [call for call in runner.calls if "scripts/check_ownership.py" in call[0]]
 
-    result = by_name(run_gate("W1-P1", dirs, FakeRunner(broken)), "G1 ownership")
-    assert (result.status, result.reason) == ("fail", "git diff exit 128")
+
+@pytest.mark.parametrize("code", [1, 2])
+def test_g1_fails_with_the_exit_code_and_keeps_the_last_40_cli_lines(
+    dirs: tuple[Path, Path], code: int
+) -> None:
+    """PG-21, ADR 0040 item 7: exit 1 or 2 is `fail`, reason `exit <code>`, CLI output in the tail."""
+    lines = "\n".join(f"ownership: p{i} not owned by any task of W1-P1" for i in range(60))
+
+    def cli(cmd: list[str], cwd: Path) -> CmdResult | None:
+        if "scripts/check_ownership.py" in cmd:
+            return CmdResult(code, lines + "\n", "fatal: bad revision\n")
+        return None
+
+    result = by_name(run_gate("W1-P1", dirs, FakeRunner(cli)), "G1 ownership")
+    assert (result.status, result.reason) == ("fail", f"exit {code}")
+    assert result.output_tail.splitlines() == [
+        *(f"ownership: p{i} not owned by any task of W1-P1" for i in range(21, 60)),
+        "fatal: bad revision",
+    ]
 
 
 def test_failing_command_fails_the_check_and_keeps_the_last_40_lines(dirs: tuple[Path, Path]) -> None:
