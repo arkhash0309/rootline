@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Named-test registry file (overview §7.7, gate check G8)",
+  "description": "One file tests/registry/<TST-ID>--<task-id>.yaml per named test per task. File name must equal <id>--<introduced_by>.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "introduced_by", "selectors"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^TST-[A-Z0-9]+-[0-9]{3}$",
+      "description": "Named test ID from overview §6.1, for example TST-LAB-001."
+    },
+    "introduced_by": {
+      "type": "string",
+      "pattern": "^W[1-8]-T[0-9]{2}$",
+      "description": "Plan task that created this registry file, for example W2-T06."
+    },
+    "selectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "target"],
+        "properties": {
+          "kind": {
+            "enum": ["pytest", "vitest", "opa", "kyverno", "playwright"],
+            "description": "playwright entries are listed but executed only by e2e.yml and W6-T10."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "description": "pytest: <path>::<test name>; vitest: test file path; opa and kyverno: policy test directory; playwright: spec file path."
+          }
+        }
+      }
+    }
+  }
+}

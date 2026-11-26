@@ -3,3 +3,4 @@
 *.png binary
 *.gif binary
 *.parquet binary
+wiki/log.md merge=union
