@@ -175,13 +175,8 @@ postgres-image:
   version: "16"
   repo: "ghcr.io/cloudnative-pg/postgresql"
   digest: "sha256:34cd4159d07b3410a1b29da35072e2e927a0905e717a61afa3814624a2e8859a"
-# kubectl-image: docker.io/bitnami/kubectl publishes only the `latest` tag (no versioned tags remain
-# on Docker Hub); `latest` on the pin date is kubectl 1.37.3 (image label org.opencontainers.image.version).
-# The cluster minor is 1.36 (k3s v1.36.6), so the client is one minor ahead, inside the kubectl skew policy.
-kubectl-image:
-  version: "1.37.3"
-  repo: "bitnami/kubectl"
-  digest: "sha256:a34afebf8bf3b99cac63c1ff5d449b0cc66ce636c7451b95a00e91d3bab1330d"
+# rancher/kubectl v1.36.2 matches the k3s minor 1.36 (ADR 0041); bitnami/kubectl has no 1.36 tag.
+kubectl-image: {version: "1.36.2", repo: "docker.io/rancher/kubectl", digest: "sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe"}
 busybox:
   version: "1.37"
   repo: "docker.io/library/busybox"
