@@ -2,7 +2,7 @@
 
 ## GitOps repositories
 
-This section is kept unchanged by later tasks.
+This section is kept unchanged by tasks W1-T09 and W1-T12.
 
 | Item | Value | Source |
 |---|---|---|
