@@ -1,0 +1,13 @@
+[project]
+name = "rootline-mcp-k8s"
+version = "0.1.0"
+description = "MCP server rootline-k8s"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rootline_mcp_k8s"]
