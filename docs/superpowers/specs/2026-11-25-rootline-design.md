@@ -132,7 +132,7 @@ Each criterion has an objective check. Milestone acceptance (§22) references th
 | ID | Criterion | Check |
 |---|---|---|
 | S1 | From a clean GCP project with the persistent Terraform root already applied, `task gke:up` produces a working demo in ≤ 25 minutes wall clock, and `task gke:down` removes all billable resources of the ephemeral root. | Runbook `wiki/runbooks/gke-spin-up.md` executed and timed. After `gke:down`, `gcloud compute instances list`, `gcloud container clusters list`, `gcloud compute addresses list` and `gcloud compute forwarding-rules list` return empty for the project. |
-| S2 | `task up` on the owner's 16 GB Windows laptop produces the full system on k3d, with the sum of memory requests ≤ 9.5 GiB. | `task doctor` prints `memory_requests_total` ≤ 9.5 GiB, and all ArgoCD apps are `Synced/Healthy`. |
+| S2 | `task up` on the owner's workstation (inside WSL 2, Ubuntu 26.04 LTS, 12 GB VM per GEN-040) produces the full system on k3d, with the sum of memory requests ≤ 9.5 GiB. | `task doctor` prints `memory_requests_total` ≤ 9.5 GiB, and all ArgoCD apps are `Synced/Healthy`. |
 | S3 | ≥ 300 labelled scenarios are captured as replayable snapshots. The test split contains exactly the held-out fault types in §15.2. | `rootline-eval dataset stats` output committed to `wiki/eval/dataset.md`. |
 | S4 | The benchmark report contains every metric in §15.5, for the baseline and every configuration in §15.6, with bootstrap 95% CIs and per-category n. It includes categories where the agent underperforms the baseline, if any. | `eval/reports/<run-id>/report.md` reviewed against the checklist in §15.11. |
 | S5 | No proposal outside tier T0 merges without a recorded approval. No proposal in the Denied class ever merges. | Tests `TST-POL-*` pass, and `rootline audit verify --check-approvals` reports 0 violations over the full audit log. |
@@ -199,7 +199,7 @@ Each row MUST exist as an ADR file `wiki/adr/NNNN-<slug>.md` by the end of week 
 | 0016 | GitOps repositories | Platform manifests in `rootline` (`deploy/`); workload manifests in a separate repo `rootline-env` | Fault and fix commits stay out of the portfolio repo history; clear blast radius |
 | 0017 | Manifest tooling | Helm everywhere. Upstream charts plus one Rootline umbrella chart; per-environment values files. Workload manifests are rendered once to plain YAML | One templating system; plain YAML makes fault and fix diffs exact |
 | 0018 | Image registry | Google Artifact Registry repository in the persistent root, pushed by GitHub Actions via Workload Identity Federation. Local k3d uses locally built, imported images | Private-repo GHCR quotas; tiny cost |
-| 0019 | Task runner | `go-task` (`Taskfile.yml`) with Python helper scripts run by `uv`. No Makefiles, no bash scripts outside container images and CI | Owner develops on Windows; cross-platform |
+| 0019 | Task runner | `go-task` (`Taskfile.yml`) with Python helper scripts run by `uv`. No Makefiles, no bash scripts outside container images and CI | Identical commands in WSL and CI; typed Python helpers instead of shell scripts |
 | 0020 | Embeddings | Local `fastembed` with `BAAI/bge-small-en-v1.5` (384 dimensions) | USD 0; CPU-friendly |
 | 0021 | Ingress | Traefik with Gateway API (`HTTPRoute`) in both environments | Parity; ingress-nginx is retired |
 | 0022 | Wiki | In-repo `wiki/` plus project skill `.claude/skills/rootline-wiki` | Portable across agents; visible to reviewers |
@@ -330,25 +330,45 @@ rootline-env/
 
 ### 4.5 Owner workstation prerequisites
 
-`GEN-040`: The owner workstation is Windows 11 with 16 GB RAM. `wiki/runbooks/workstation-setup.md` MUST document installing exactly the following, with the `winget` IDs where they exist:
+`GEN-040`: The owner workstation is a Windows 11 PC (15.6 GB RAM, 20 logical CPUs) on which **all development runs inside WSL 2**, distribution `Ubuntu` (Ubuntu 26.04 LTS, systemd enabled in `/etc/wsl.conf`, default user `arkhash0309`). Windows itself runs only the WSL VM and the web browser (Edge or Chrome) used for the console, Keycloak, ArgoCD and passkeys (Windows Hello). Rules:
+- Repositories live on the WSL ext4 filesystem at `/home/arkhash0309/projects/rootline` and `/home/arkhash0309/projects/rootline-env`, never under `/mnt/c` (cross-filesystem I/O is several times slower).
+- `%UserProfile%\.wslconfig` on Windows contains exactly:
 
-| Tool | Requirement |
-|---|---|
-| Docker Desktop | WSL2 backend. `%UserProfile%\.wslconfig` sets `memory=12GB` and `processors=6` (or the CPU count − 2, whichever is smaller) |
-| k3d | version line from `versions.yaml` |
-| kubectl | matching the cluster minor ±1 |
-| Helm | 3.x line from `versions.yaml` |
-| go-task | `task` CLI |
-| uv | Manages Python 3.12 |
-| Node.js | 24 LTS, with npm |
-| Terraform | line from `versions.yaml` |
-| gcloud CLI | with `gke-gcloud-auth-plugin` |
-| GitHub CLI `gh` | authenticated as `arkhash0309` |
-| Ollama for Windows | native, not in WSL or cluster (§9.5.4) |
-| OPA CLI | for `opa test` locally |
-| Git | ≥ 2.45 |
+  ```ini
+  [wsl2]
+  memory=12GB
+  processors=16
+  swap=8GB
+  localhostForwarding=true
+  ```
 
-`GEN-041`: All automation MUST run from PowerShell or Git Bash on Windows, and from bash on Linux CI, without modification. Every `Taskfile.yml` task MUST therefore use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed.
+  (16 of the 20 logical CPUs go to WSL; 4 stay with Windows.) After editing it, run `wsl --shutdown` from Windows once.
+- Services published by k3d on WSL ports 80/443 are reached from the Windows browser at `https://*.127.0.0.1.sslip.io` through WSL localhost forwarding.
+
+`wiki/runbooks/workstation-setup.md` MUST document installing exactly the following **inside WSL Ubuntu** (except where the Where column says Windows), with the exact install commands:
+
+| Tool | Where | Requirement and install method |
+|---|---|---|
+| WSL 2 + Ubuntu 26.04 LTS | Windows | distribution `Ubuntu`, systemd on, `.wslconfig` above |
+| Docker Engine | WSL | native `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` from Docker's apt repository; systemd service `docker` enabled; user in group `docker`. Docker Desktop is **not** used |
+| k3d | WSL | version line from `versions.yaml`, official install script with `TAG=v<version>` |
+| kubectl | WSL | `pkgs.k8s.io` apt repository, matching the cluster minor ±1 |
+| Helm | WSL | 3.x line from `versions.yaml`, official release tarball into `/usr/local/bin` |
+| go-task | WSL | `task` CLI, official install script into `~/.local/bin` |
+| uv | WSL | official installer; manages Python 3.12 (the system Python is not used) |
+| Node.js | WSL | 24 LTS with npm, installed with `fnm` |
+| Playwright browsers | WSL | `npx playwright install --with-deps chromium` (headless e2e and accessibility tests) |
+| Terraform | WSL | HashiCorp apt repository, line from `versions.yaml` |
+| gcloud CLI | WSL | Google Cloud apt repository, with `google-cloud-cli-gke-gcloud-auth-plugin` |
+| GitHub CLI `gh` | WSL | GitHub apt repository, authenticated as `arkhash0309` |
+| Ollama | WSL | Linux installer (systemd service `ollama`, CPU-only), not in the cluster (§9.5.4) |
+| OPA CLI | WSL | static binary from GitHub releases into `~/.local/bin`, for `opa test` |
+| Git | WSL | ≥ 2.45 (apt) |
+| Support packages | WSL | `build-essential`, `jq`, `zstd`, `libnss3-tools` (NSS `certutil`), `wslu` (`wslview` opens URLs in the Windows browser), `ca-certificates` |
+| Claude Code | WSL | installed inside WSL; every coordinator and agent session starts in `/home/arkhash0309/projects/rootline` |
+| Web browser | Windows | Edge or Chrome with Windows Hello for passkeys |
+
+`GEN-041`: All automation MUST run inside the WSL Ubuntu distribution on the owner workstation and in bash on Linux CI, without modification. Windows-native shells (PowerShell, cmd, Git Bash) MUST NOT be used to run project commands. Every `Taskfile.yml` task MUST use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed. The only Windows programs automation may call are `certutil.exe` (via WSL interop, `task trust-ca`) and the browser (via `wslview`).
 
 ### 4.6 Version pinning
 
@@ -409,7 +429,7 @@ rootline-env/
 | `task stop` / `task start` | `k3d cluster stop` / `k3d cluster start` (frees RAM for Ollama runs) |
 | `task images` | Builds all service images with tag `dev` and imports them into k3d |
 | `task secrets:local` | Creates the Kubernetes Secret `rootline-bootstrap` in namespace `rootline-secrets` from `.env.local` (§10.11) |
-| `task trust-ca` | Exports the local CA certificate and imports it into the Windows user Root store with `certutil -user -addstore Root` (prompting the OS dialog) |
+| `task trust-ca` | Exports the local CA certificate to `data/rootline-ca.crt` and installs it into (1) the WSL system trust store (`/usr/local/share/ca-certificates/rootline-ca.crt` + `sudo update-ca-certificates`), (2) the NSS database `~/.pki/nssdb` used by Chromium/Playwright in WSL (`certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n rootline-local-ca`), and (3) the Windows user Root store via WSL interop (`certutil.exe -user -addstore Root <wslpath -w path>`, which shows the Windows confirmation dialog) |
 | `task test` | Runs all unit tests (Python + console + `opa test`) |
 | `task lint` | ruff, mypy, eslint, tsc, `helm lint`, kubeconform, `terraform fmt -check`, tflint |
 | `task eval:smoke` | Runs the smoke set (§15.10) with config `all-small` |
@@ -1475,7 +1495,7 @@ The worker heartbeats every 20 s, extending the lease by 60 s. A reaper in every
 `AGT-053`: Configuration `local`:
 - Uses Ollama's native `/api/chat` with `format` = the node output JSON schema, `options: {temperature: 0, seed: 7, num_ctx: 16384}`, and no thinking or effort parameters.
 - The prompts are the same as for Claude.
-- Ollama runs natively on the host. The eval runner reaches it at `http://127.0.0.1:11434`. Configuration `local` is available **only** in the eval runner, not in-cluster.
+- Ollama runs inside WSL on the owner workstation (systemd service `ollama`, CPU-only, GEN-040), only while the k3d cluster is stopped. The eval runner, also in WSL, reaches it at `http://127.0.0.1:11434`. Configuration `local` is available **only** in the eval runner, not in-cluster.
 
 #### 9.5.3 Pricing table
 
@@ -3135,7 +3155,7 @@ options:
 
 `INF-031`: Local TLS:
 - cert-manager self-signed `ClusterIssuer` `selfsigned` → `Certificate` `rootline-local-ca` (isCA, 10 years, ECDSA P-256) → `ClusterIssuer` `rootline-ca` → `Certificate` `rootline-wildcard` for `*.127.0.0.1.sslip.io`, used by the Gateway HTTPS listener.
-- `task trust-ca` installs the CA into the Windows user root store.
+- `task trust-ca` installs the CA into the WSL system store, the WSL NSS database and the Windows user Root store (GEN-060).
 
 ### 16.6 GKE domain and TLS
 
@@ -3244,7 +3264,7 @@ The dump is uploaded to `gs://<artifacts>/seed/v1/seed.sql.zst`.
 - `api` stops auto-investigation, and the console shows a banner
 - the owner can raise the cap only through a values change (GitOps)
 
-`CST-011`: On the host, `rootline-llm` keeps a ledger at `%LOCALAPPDATA%\rootline\llm-ledger.json` (Linux: `~/.local/share/rootline/llm-ledger.json`):
+`CST-011`: On the host (inside WSL, GEN-040), `rootline-llm` keeps a ledger at `~/.local/share/rootline/llm-ledger.json` (`$XDG_DATA_HOME/rootline/llm-ledger.json` when `XDG_DATA_HOME` is set):
 
 ```json
 {"keys": {"dev": {"cap_usd": 16, "spent_usd": ...}, "eval": {...}, "ci": {...}}, "history": [{"ts", "key", "usd", "run_id"}]}
@@ -3608,7 +3628,7 @@ Last updated: YYYY-MM-DD (commit <sha7>)
 
 | # | Risk | Likelihood | Impact | Mitigation | Trigger and response |
 |---|---|---|---|---|---|
-| R1 | Laptop RAM insufficient | M | H | ARC-030 budget; ARC-031 reductions; Ollama only with cluster stopped | `task doctor` > 9.5 GiB → apply ARC-031 |
+| R1 | Workstation RAM insufficient (12 GB WSL VM) | M | H | ARC-030 budget; ARC-031 reductions; Ollama only with cluster stopped; parallel stages run with the cluster stopped (plan overview §7.2) | `task doctor` > 9.5 GiB → apply ARC-031 |
 | R2 | Keycloak delegation preview misbehaves | M | M | SEC-040 `azp` fallback; TST-SEC-010–016 | Any of those tests fail on pinned version → `azp` mode + ADR |
 | R3 | Keycloak step-up flow differs from spec | M | M | SEC-023 fallback | TST-SEC-005 fails → fallback + ADR |
 | R4 | LLM spend overrun | M | H | prepaid cap; AGT-020; CST-010/011; EVL-063 | pilot cost > 1.3× estimate → EVL-063 reductions |
@@ -3692,7 +3712,7 @@ Length 2,500–4,000 words. It contains no claims without a number or a link to 
 | C8 | Escalation | Retry `rca` with the large model at low confidence | Removed | `rca` already uses the large model in `routed` |
 | C9 | Agent tool use | LLM calls tools | Planner/executor: the LLM emits typed plans; code executes (AGT-002) | Determinism, budgets, replayability, and a tighter injection surface |
 | C10 | Registry | GHCR | Artifact Registry in the persistent root, CI via WIF (ADR 0018) | GHCR private-package storage and egress quotas |
-| C11 | Task runner | `make up` | `task up` with go-task (ADR 0019) | The owner works on Windows |
+| C11 | Task runner | `make up` | `task up` with go-task (ADR 0019) | Identical commands in WSL and CI (originally: the owner works on Windows; development moved into WSL on 2026-11-26, PG-17) |
 | C12 | Budget split | dev 25 / eval 30 / CI 10 / GKE 15 / buffer 20 | dev 16 / eval 48 / CI 5 / cluster 6 / GCP 10 / buffer 15 | Real pricing; batch API; CI uses `all-small` |
 | C13 | Evaluation execution | in cluster | on the host with in-process replay servers; batch lockstep (ADR 0024) | 50% cost; no cluster RAM needed; runs with Ollama |
 | C14 | Test split size | ~40% | 143 of 300 (48%), plus a stratified test-half of 86 for expensive configurations | Exact, deterministic counts |
@@ -3729,6 +3749,7 @@ Implementers append rows here per §0.3.
 | 2026-11-26 | PG-14 (EVL-062): batch `custom_id` must match `^[a-zA-Z0-9_-]{1,64}$`. | `custom_id = "c" + sha256("<run_id>:<scenario_id>:<seq>")[:48]` with a persisted mapping file. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
 | 2026-11-26 | PG-15 (AGT-063): one system-block breakpoint does not cache the growing conversation. | Also send top-level automatic `cache_control`; measured by the week-4 cache check. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
 | 2026-11-26 | PG-16 (GEN-020, GEN-021, MS-001): parallel implementation needs a branch where several task branches are combined and verified before `develop`, and the spec does not say which models plan, build and review. | Owner instruction: parallel stages per `docs/superpowers/plans/2026-11-26-rootline-schedule.yaml`; task PRs merge into `integration/<stage>` branches that pass the integration gate (plan overview §7.7) and an integration review, then reach `develop` as one squash-merged PR. Coordinator Haiku 5.5; planner and reviewer Opus 5.5 high; implementer Sonnet 5.5 high (`CLAUDE.md`). | 0035 (written in W1-T04) | planning commit |
+| 2026-11-26 | PG-17 (GEN-040, GEN-041, GEN-060, AGT-053, CST-011, INF-031): owner instruction — all development moves into WSL 2 to use the CPU cores better. | GEN-040/041 rewritten for WSL Ubuntu 26.04 with native Docker Engine, repositories on the WSL filesystem, `.wslconfig` 12 GB / 16 processors; Windows keeps only the browser; `task trust-ca` installs into WSL, NSS and Windows stores; Ollama and the LLM ledger live in WSL. | 0036 (written in W1-T04) | WSL commit |
 
 ---
 

@@ -983,7 +983,7 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 | `wiki/cost-ledger.md` | `# Cost ledger`; the CST-001 caps table; a weekly table `| Week of (Monday) | Anthropic dev | Anthropic cluster | Anthropic CI | Ledger dev/eval/ci | GCP to date | Total | Variance vs plan | Notes |` with the first row for week 1 at 0.00 |
 | `wiki/adr/0000-template.md` | WIK-011 template: `# NNNN — <title>`, `Status: proposed`, `Date:`, `## Context`, `## Decision`, `## Consequences`, `## Alternatives considered`, `## Spec references` |
 | `wiki/components/<slug>.md` | WIK-010 nine headings in order (Purpose, Requirement IDs, Interfaces, Configuration, Dependencies, Data owned, Failure modes and handling, Runbook links, Last verified) |
-| `wiki/runbooks/workstation-setup.md` | the GEN-040 tool table with `winget` IDs: `Docker.DockerDesktop`, `k3d.k3d`, `Kubernetes.kubectl`, `Helm.Helm`, `Task.Task`, `astral-sh.uv`, `OpenJS.NodeJS.LTS`, `Hashicorp.Terraform`, `Google.CloudSDK`, `GitHub.cli`, `Ollama.Ollama`, `open-policy-agent.opa`, `Git.Git`; the `.wslconfig` content `[wsl2]\nmemory=12GB\nprocessors=6`; a section `## Anthropic` describing O-8 and PG-13; a section `## Verify` saying run `task doctor` |
+| `wiki/runbooks/workstation-setup.md` | sections in order: `## Windows side` (WSL 2 with distribution `Ubuntu` 26.04 LTS, the exact GEN-040 `.wslconfig` content, `wsl --shutdown`, the browser); `## WSL basics` (`/etc/wsl.conf` with `[boot] systemd=true` and `[user] default=arkhash0309`, `sudo apt update && sudo apt upgrade -y`, the support packages of GEN-040); `## Tools` — one subsection per GEN-040 row with the exact install commands (Docker apt repository steps from docs.docker.com for Ubuntu, `sudo usermod -aG docker arkhash0309`, `sudo systemctl enable --now docker`; k3d install script with `TAG=v<versions.k3d>`; kubectl from `pkgs.k8s.io`; Helm tarball; `go-task` install script `-b ~/.local/bin`; uv installer; `fnm install 24`; `npx playwright install --with-deps chromium`; HashiCorp, Google Cloud and GitHub CLI apt repositories; Ollama installer and `sudo systemctl disable --now ollama` (started only for pilots); OPA binary; Claude Code inside WSL); `## Repositories` (clone into `/home/arkhash0309/projects/rootline` and `/home/arkhash0309/projects/rootline-env`, never under `/mnt/c`; VS Code users open them with the Remote - WSL extension); a section `## Anthropic` describing O-8 and PG-13; a section `## Verify` saying run `task doctor` |
 | `wiki/versions.md` | title `# Versions` + `Status: not implemented yet — planned in W1-T02 step 8.` |
 | `wiki/runbooks/local-up.md` | already created by W1-T08 (stage W1-S2): do not create or edit it; list it in `index.md` |
 | `wiki/runbooks/capture-batch.md`, `gcp-bootstrap.md`, `gke-spin-up.md`, `gke-teardown.md`, `github-apps.md`, `interview-demo.md`, `recovery.md` | title + `Status: not implemented yet — planned in <task>` (capture-batch: W2-T12; gcp-bootstrap: W7-T01; gke-spin-up/teardown: W7-T06; github-apps: W2-T07 and W3-T10; interview-demo: W8-T06; recovery: W2-T12) |
@@ -1006,13 +1006,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task W1-T04: Architecture decision records 0001–0035
+### Task W1-T04: Architecture decision records 0001–0036
 
-**Requirement IDs:** WIK-011, spec §3, overview §5 (PG-1 … PG-16), S9.
+**Requirement IDs:** WIK-011, spec §3, overview §5 (PG-1 … PG-17), S9.
 **Depends on:** W1-T03 (same branch `feat/w1-wiki`).
 
 **Files:**
-- Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0035-swarm-execution.md` (35 files)
+- Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0036-wsl-development.md` (36 files)
 - Modify: `wiki/index.md` (list them), `docs/superpowers/specs/2026-11-25-rootline-design.md` §26 (rows already added at planning time; fill the `ADR` column links)
 
 - [ ] **Step 1: Write each ADR from this table**
@@ -1039,12 +1039,12 @@ Every file uses the WIK-011 template. `Status: accepted`, `Date: <today>`. **Con
 | 0016 | `gitops-repositories` | Single repo | Two deploy keys; env repo bot-only | GEN-010–012, C4 |
 | 0017 | `manifest-tooling` | Kustomize | Workload rendered once; exact diffs | WKL-010, C5 |
 | 0018 | `image-registry` | GHCR | WIF for CI; cleanup policy | INF-004, CI-001 |
-| 0019 | `task-runner` | Make; npm scripts | Python helpers for anything non-trivial | GEN-041, GEN-060 |
+| 0019 | `task-runner` | Make; npm scripts | Python helpers for anything non-trivial; same commands in WSL and CI | GEN-041, GEN-060 |
 | 0020 | `embeddings` | Voyage; OpenAI embeddings | 384-dim vectors | AGT-090 |
 | 0021 | `ingress` | ingress-nginx; Gateway with Envoy | Same HTTPRoutes locally and on GKE | INF-030, INF-040 |
 | 0022 | `wiki` | External Notion/Confluence | Wiki lint in CI | WIK-* |
 | 0023 | `fix-catalogue` | Free-form patches; `toggle_flag` | Flags fixed by `resync_app` | POL-020 |
-| 0024 | `evaluation-execution` | In-cluster eval jobs | Host must run Ollama with cluster stopped | EVL-062, C13 |
+| 0024 | `evaluation-execution` | In-cluster eval jobs | Ollama runs in WSL with the cluster stopped | EVL-062, C13 |
 | 0025 | `branching` | Trunk-based | Release PR per week | GEN-020 |
 | 0026 | `structured-outputs-raw-schema` | `messages.parse` interactive + raw schema in batch | Own schema transform; Pydantic re-validation | PG-1, AGT-052, AGT-062 |
 | 0027 | `no-fallbacks-in-batch` | Client-side fallback middleware | Batch refusals retried once then fail | PG-2 |
@@ -1056,6 +1056,7 @@ Every file uses the WIK-011 template. `Status: accepted`, `Date: <today>`. **Con
 | 0033 | `workload-render-refinements` | Keep init-copy and restart flagd always | Live flag drift possible; collector FQDN | PG-11, PG-12 |
 | 0034 | `batch-ids-and-caching` | Truncate IDs; system-block-only caching | Hashed batch `custom_id` with a mapping file; extra top-level cache breakpoint | PG-14, PG-15 |
 | 0035 | `swarm-execution` | One agent implementing tasks in sequence; per-task PRs straight into develop | Parallel stages in worktrees, integration branches, integration gate; fixed role models (Haiku 5.5 coordinator, Opus 5.5 planner and reviewer, Sonnet 5.5 implementer, high effort except the coordinator) | PG-16, overview §7, CLAUDE.md |
+| 0036 | `wsl-development` | Windows-native PowerShell/Git Bash with Docker Desktop | All development in WSL 2 Ubuntu 26.04 with native Docker Engine; repos on the WSL filesystem; Windows keeps the browser; CA trusted in WSL and Windows | PG-17, GEN-040, GEN-041 |
 
 - [ ] **Step 2: Update `wiki/index.md`, then run the lint**
 
@@ -1066,7 +1067,7 @@ Run: `uv run pytest tests/repo -v` → PASS.
 
 ```bash
 git add wiki docs/superpowers/specs/2026-11-25-rootline-design.md
-git commit -m "docs(wiki): add ADRs 0001-0035
+git commit -m "docs(wiki): add ADRs 0001-0036
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 git push -u origin feat/w1-wiki
@@ -1241,7 +1242,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 DEPLOY_KEY_ROOTLINE=
 # week: 1 — read-only deploy key for arkhash0309/rootline-env (PEM, quoted multi-line)
 DEPLOY_KEY_ROOTLINE_ENV=
-# week: 1 — local checkout path of rootline-env (absolute, forward slashes)
+# week: 1 — local checkout path of rootline-env inside WSL (absolute Linux path: /home/arkhash0309/projects/rootline-env)
 ROOTLINE_ENV_DIR=
 # week: 2 — GitHub App rootline-faultlab
 GH_APP_FAULTLAB_ID=
@@ -1319,6 +1320,16 @@ def test_parse_week_from_status() -> None:
 
 def test_check_line_format() -> None:
     assert doctor.Check("git", "OK", "2.47.1").line() == "OK   git: 2.47.1"
+
+
+def test_wsl_checks() -> None:
+    """Verifies GEN-040, GEN-041 (PG-17)."""
+    from pathlib import Path
+    ok = doctor.wsl_checks("Linux version 6.6.114.1-microsoft-standard-WSL2", Path("/home/arkhash0309/projects/rootline"),
+                           {"WSL_DISTRO_NAME": "Ubuntu"})
+    assert [(c.name, c.status) for c in ok][:2] == [("wsl", "OK"), ("repo-location", "OK")]
+    bad = doctor.wsl_checks("Linux version 6.8.0-generic", Path("/mnt/c/Users/arkha/rootline"), {})
+    assert [(c.name, c.status) for c in bad][:2] == [("wsl", "FAIL"), ("repo-location", "FAIL")]
 ```
 
 Run: `uv run pytest tests/repo/test_doctor.py -v` → FAIL.
@@ -1349,6 +1360,7 @@ def run(cmd: list[str], *, check: bool = True, capture: bool = True,
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -1456,7 +1468,8 @@ def docker_memory_check() -> Check:
         gib = int(r.stdout.strip()) / 2**30
     except ValueError:
         return Check("docker-memory", "FAIL", "docker not running")
-    return Check("docker-memory", "OK" if gib >= 11.5 else "FAIL", f"{gib:.1f} GiB (need ≥ 11.5)")
+    return Check("docker-memory", "OK" if gib >= 11.5 else "FAIL",
+                 f"{gib:.1f} GiB (need ≥ 11.5; native Docker Engine sees the WSL VM memory set by .wslconfig)")
 
 
 def cluster_memory_check() -> Check:
@@ -1469,10 +1482,23 @@ def cluster_memory_check() -> Check:
                  f"{gib} GiB (cap {MEMORY_CAP_GIB})")
 
 
+def wsl_checks(proc_version: str, repo: Path, env: dict[str, str]) -> list[Check]:
+    """GEN-040/041 (PG-17): run inside WSL 2, repo on the WSL filesystem, systemd Docker."""
+    out = [Check("wsl", "OK" if "microsoft" in proc_version.lower() and env.get("WSL_DISTRO_NAME") else "FAIL",
+                 env.get("WSL_DISTRO_NAME", "not running inside WSL"))]
+    on_windows_fs = str(repo).startswith("/mnt/")
+    out.append(Check("repo-location", "FAIL" if on_windows_fs else "OK",
+                     f"{repo} ({'Windows filesystem: move to /home/arkhash0309/projects' if on_windows_fs else 'WSL filesystem'})"))
+    cpus = os.cpu_count() or 0
+    out.append(Check("wsl-cpus", "OK" if cpus >= 16 else "WARN", f"{cpus} (.wslconfig processors=16)"))
+    return out
+
+
 def main() -> int:
     week = current_week((REPO / "wiki/status.md").read_text(encoding="utf-8"))
     local = dotenv_values(REPO / ".env.local") if (REPO / ".env.local").exists() else {}
-    checks = tool_checks() + [docker_memory_check()]
+    checks = wsl_checks(Path("/proc/version").read_text(encoding="utf-8"), REPO, dict(os.environ)) + tool_checks() + \
+        [docker_memory_check()]
     checks += env_key_checks((REPO / ".env.example").read_text(encoding="utf-8"), dict(local), week)
     checks.append(cluster_memory_check())
     for c in checks:
@@ -1492,6 +1518,10 @@ Add `python-dotenv` to the root `dev` dependency group (`uv add --dev python-dot
 version: "3"
 
 dotenv: [".env.local"]
+
+env:
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt        # Python/httpx in WSL trust the local CA after task trust-ca (PG-17)
+  NODE_EXTRA_CA_CERTS: /usr/local/share/ca-certificates/rootline-ca.crt
 
 vars:
   PY: uv run python
@@ -1527,7 +1557,7 @@ tasks:
     cmds: ["{{.PY}} scripts/secrets_local.py"]
 
   trust-ca:
-    desc: Import the local CA into the Windows user Root store (INF-031)
+    desc: Trust the local CA in WSL (system store + NSS) and in the Windows user Root store (INF-031, GEN-060)
     cmds: ["{{.PY}} scripts/trust_ca.py {{.CLI_ARGS}}"]
 
   test:
@@ -2118,10 +2148,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ```bash
 gh repo create arkhash0309/rootline-env --private --description "GitOps environment for Rootline. Commits are made by bots."
-gh repo clone arkhash0309/rootline-env "../rootline-env"
+gh repo clone arkhash0309/rootline-env /home/arkhash0309/projects/rootline-env
 ```
 
-Set `ROOTLINE_ENV_DIR` in `.env.local` to the absolute path of the clone with forward slashes (for example `C:/Users/arkha/Downloads/Portfolio Projects/rootline-env`).
+Set `ROOTLINE_ENV_DIR=/home/arkhash0309/projects/rootline-env` in `.env.local` (run inside WSL; GEN-040).
 
 - [ ] **Step 2: Create the initial files in the clone**
 
@@ -2991,7 +3021,7 @@ def test_repo_secret_shape() -> None:
 - [ ] **Step 2: Implement `secrets_local.py`** — builds both manifests and applies them with `kubectl --context k3d-rootline apply -f -` (via `scripts.proc.run(..., input_text=yaml.safe_dump(...))`). Namespaces `rootline-secrets` and `argocd` are created with `kubectl create namespace --dry-run=client -o yaml | kubectl apply -f -` equivalents in Python (build the Namespace manifest and apply) when missing.
 
 - [ ] **Step 3: Implement `up.py`** — steps in order, each printing `==> <step>`:
-  1. `k3d cluster list -o json`; if `rootline` absent, write `infra/k3d/rootline.generated.yaml` (substitute `<versions.k3s>` with the tag where `+` becomes `-`, and `<repo>` with the absolute repo path using forward slashes) and run `k3d cluster create --config infra/k3d/rootline.generated.yaml`.
+  1. `k3d cluster list -o json`; if `rootline` absent, write `infra/k3d/rootline.generated.yaml` (substitute `<versions.k3s>` with the tag where `+` becomes `-`, and `<repo>` with the absolute repository path inside WSL, `/home/arkhash0309/projects/rootline`) and run `k3d cluster create --config infra/k3d/rootline.generated.yaml`.
   2. `scripts/build_images.py --tag dev --import-k3d rootline` (skips when no service has a Dockerfile yet).
   3. `helm repo add argo <repo>` and `helm upgrade --install argocd argo/argo-cd --version <chart> -n argocd --create-namespace -f deploy/upstream/argo-cd/values-local.yaml --wait --timeout 10m`.
   4. `scripts/secrets_local.py`.
@@ -3000,7 +3030,7 @@ def test_repo_secret_shape() -> None:
   7. Print the ArgoCD admin password from secret `argocd/argocd-initial-admin-secret` key `password` and the URLs `https://argocd.127.0.0.1.sslip.io`.
   8. Run `scripts/doctor.py` memory check and print `memory_requests_total`.
 
-`trust_ca.py`: reads secret `cert-manager/rootline-local-ca` key `ca.crt` (or with `--env gke` the GKE fallback CA secret named in INF-041), writes it to `data/rootline-ca.crt`, runs `certutil -user -addstore Root data/rootline-ca.crt` on Windows (`sys.platform == "win32"`), otherwise prints the path and the command for the OS.
+`trust_ca.py`: reads secret `cert-manager/rootline-local-ca` key `ca.crt` (or with `--env gke` the GKE fallback CA secret named in INF-041), writes it to `data/rootline-ca.crt`, then (GEN-060, PG-17): (1) `sudo install -m 0644 data/rootline-ca.crt /usr/local/share/ca-certificates/rootline-ca.crt && sudo update-ca-certificates` (prompts for the sudo password in the terminal); (2) `certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n rootline-local-ca -i data/rootline-ca.crt` after creating the database with `certutil -d sql:$HOME/.pki/nssdb -N --empty-password` if absent; (3) `certutil.exe -user -addstore Root <wslpath -w data/rootline-ca.crt>` through WSL interop (Windows shows a confirmation dialog the owner accepts). Each step prints `OK`/`FAIL`; the script exits 1 if any failed. It refuses to run outside WSL (no `WSL_DISTRO_NAME`) unless `--linux-only` is passed (CI uses `--linux-only`, which skips step 3).
 
 `build_images.py`: `--tag <t>`, `--import-k3d <cluster>` or `--load-kind <cluster>` or `--push <registry>`; image list = every `services/*/Dockerfile` (image name = directory name) plus `apps/console/Dockerfile` (`console`); build args `PYTHON_IMAGE`, `UV_IMAGE`, `NODE_IMAGE` from `versions.yaml` (`repo@digest`); build context = repo root; `docker buildx build --load -f <Dockerfile> -t rootline/<name>:<tag> --build-arg ... .`; then `k3d image import -c <cluster> rootline/<name>:<tag> ...`.
 
@@ -3020,7 +3050,7 @@ Expected: a `0.8.x` version. If it fails, build `deploy/images/postgres/Dockerfi
 
 - [ ] **Step 6: Measure memory (S2)** — `task doctor` → `memory_requests_total` ≤ 9.5 GiB. Write `wiki/components/capacity.md`: a table of every pod's memory request from `kubectl get pods -A -o json` (component, namespace, request, limit) and the total, dated. If > 9.5 GiB, apply ARC-031 reductions in order, recording each with the new total. The workload budget (≤ 3.2 GiB, ARC-030) is checked by summing namespace `shop`; if it exceeds 3.2 GiB, set per-component requests in the render values (`components.<name>.resources.requests.memory`) to bring the sum under 3.2 GiB and re-render (this is a re-render that bumps `baseline-v2`, WKL-001).
 
-- [ ] **Step 7: Run `task trust-ca`** and open `https://argocd.127.0.0.1.sslip.io` in the browser; log in as `admin`. Record the result in `wiki/runbooks/local-up.md`, which now documents: prerequisites, `.env.local` keys for week 1, `task up`, expected duration, URLs, admin password retrieval, `task stop/start/down`, and troubleshooting (apps stuck `Progressing` → `kubectl -n argocd get applications`, `argocd app get` via UI).
+- [ ] **Step 7: Run `task trust-ca`** and open `https://argocd.127.0.0.1.sslip.io` in the Windows browser (`wslview https://argocd.127.0.0.1.sslip.io` from WSL); log in as `admin`. Record the result in `wiki/runbooks/local-up.md`, which now documents: prerequisites, `.env.local` keys for week 1, `task up`, expected duration, URLs, admin password retrieval, `task stop/start/down`, and troubleshooting (apps stuck `Progressing` → `kubectl -n argocd get applications`, `argocd app get` via UI).
 
 - [ ] **Step 8: Smoke registration (overview §7.7)** — create `tests/smoke/platform.yaml` with one `argocd_app` check (`expect: Synced/Healthy`) per Application enabled for `local` in `deploy/root/values.yaml`, then run `task smoke:cluster` → all PASS.
 

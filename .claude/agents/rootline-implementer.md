@@ -21,6 +21,7 @@ You are the Rootline implementer. Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
 
 ## Rules
 
+0. You run inside WSL 2 Ubuntu (CLAUDE.md "Development environment"). Use Linux paths and bash only; never call PowerShell or cmd. The only Windows programs you may invoke are `certutil.exe` through `task trust-ca` and the browser through `wslview`, and only when a plan step says so.
 1. Before anything else, load the `rootline-wiki` skill (or read `.claude/skills/rootline-wiki/SKILL.md`) once it exists, then read `CLAUDE.md`, `docs/superpowers/plans/2026-11-26-rootline-00-overview.md` (Global Constraints and §7), and your task in `plan_file`.
 2. Work only on `branch`, created from `base`. Never commit to `develop`, `main` or an `integration/*` branch.
 3. In a parallel stage, modify only the paths listed under your task's `owns` in the schedule YAML, plus the always-allowed paths in overview §7.4. If the task needs any other path, or needs a shared contract (overview §3) to change, stop and report `BLOCKED: <reason>`; do not work around it.

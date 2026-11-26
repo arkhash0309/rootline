@@ -5,6 +5,16 @@ Instructions for every AI coding agent working in this repository. These rules o
 Project: **Rootline**, an AI SRE agent that diagnoses incidents in its own Kubernetes cluster.
 Source of truth: [docs/superpowers/specs/2026-11-25-rootline-design.md](docs/superpowers/specs/2026-11-25-rootline-design.md) (SPEC-ROOTLINE-001).
 
+## Development environment (owner instruction, 2026-11-26 — mandatory)
+
+All development happens inside **WSL 2**, distribution `Ubuntu` (Ubuntu 26.04 LTS, systemd on), because it uses the CPU cores better (spec GEN-040, GEN-041, plan decision PG-17).
+
+- Work only in the checkout at `/home/arkhash0309/projects/rootline` (and `/home/arkhash0309/projects/rootline-env`) on the WSL filesystem. Never work on a checkout under `/mnt/c`.
+- Start every Claude Code session — the coordinator and any manual session — from a WSL shell in that directory. Subagents and their worktrees therefore run in WSL too.
+- Run every project command (`task`, `uv`, `git`, `docker`, `k3d`, `kubectl`, `helm`, `terraform`, `gcloud`, `gh`, `ollama`) in WSL bash. Never use PowerShell, cmd or Git Bash for project commands.
+- Docker is the native Docker Engine inside WSL (systemd service `docker`); Docker Desktop is not used.
+- Windows is used only for the browser (console, Keycloak, ArgoCD, passkeys with Windows Hello) and for `%UserProfile%\.wslconfig` (`memory=12GB`, `processors=16`, `swap=8GB`, `localhostForwarding=true`). Open URLs from WSL with `wslview <url>`.
+
 ## Agent models and roles (owner instruction, 2026-11-26 — mandatory)
 
 - Planning: Opus 5.5 with high effort
@@ -16,7 +26,7 @@ These assignments are strict. No other model or effort level may be used for the
 
 | Role | Model ID | Effort | Runs as | Responsibilities |
 |---|---|---|---|---|
-| Coordinator | `claude-haiku-5-5` | `medium` (Haiku 5.5's default effort; the owner set no effort for this role) | The top-level Claude Code session, started with `claude --model claude-haiku-5-5`. It is the only role that spawns subagents, because subagents cannot spawn subagents | Reads the execution schedule, dispatches planner, implementer and reviewer subagents, runs the integration gate, performs mechanical git operations (branches, merges, PRs), updates `wiki/status.md`, asks the owner for **[OWNER]** / **[CONFIRM]** / **[PAID]** steps. It does not write or review application code itself |
+| Coordinator | `claude-haiku-5-5` | `medium` (Haiku 5.5's default effort; the owner set no effort for this role) | The top-level Claude Code session, started inside WSL from `/home/arkhash0309/projects/rootline` with `claude --model claude-haiku-5-5`. It is the only role that spawns subagents, because subagents cannot spawn subagents | Reads the execution schedule, dispatches planner, implementer and reviewer subagents, runs the integration gate, performs mechanical git operations (branches, merges, PRs), updates `wiki/status.md`, asks the owner for **[OWNER]** / **[CONFIRM]** / **[PAID]** steps. It does not write or review application code itself |
 | Planner | `claude-opus-5-5` | `high` | Subagent `rootline-planner` (`.claude/agents/rootline-planner.md`) | Writes and amends specs, plans, the execution schedule and ADRs; decides spec gaps (spec §0.3); re-plans after a task fails 3 fix rounds; designs non-trivial merge-conflict resolutions |
 | Implementer | `claude-sonnet-5-5` | `high` | Subagent `rootline-implementer` (`.claude/agents/rootline-implementer.md`); in its own git worktree when its task is in a parallel stage | Executes exactly one plan task test-first; fixes review findings, gate failures and conflicts on its own task branch |
 | Reviewer | `claude-opus-5-5` | `high` | Subagent `rootline-reviewer` (`.claude/agents/rootline-reviewer.md`); read-only, may run tests | Reviews every task (spec compliance, then code quality) and every integration before it reaches `develop` |
