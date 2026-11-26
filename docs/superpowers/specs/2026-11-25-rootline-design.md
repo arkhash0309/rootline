@@ -364,12 +364,12 @@ rootline-env/
 | Ollama | WSL | Linux installer (systemd service `ollama`, CPU-only), service disabled by default and started only for pilots; not in the cluster (§9.5.4) |
 | OPA CLI | WSL | static release binary into `~/.local/bin`, for `opa test` |
 | Git | WSL | ≥ 2.45 (apt) |
-| Support packages | WSL | `unzip`, `jq`, `zstd`, `libnss3-tools` (NSS `certutil`), `wslu` (`wslview` opens URLs in the Windows browser), `build-essential`, `ca-certificates` (apt) |
+| Support packages | WSL | `unzip`, `jq`, `zstd`, `libnss3-tools` (NSS `certutil`), `build-essential`, `ca-certificates` (apt) |
 | Claude Code | WSL | native Linux build into `~/.local/bin`; every coordinator and agent session starts in `/home/arkhash0309/projects/rootline`. The Windows copy is never used from WSL |
 | Shell setup | WSL | `~/.profile` and `~/.bashrc` put `~/.local/bin` and `fnm` first on `PATH`, so non-interactive agent shells see the same tools |
 | Web browser | Windows | Edge or Chrome with Windows Hello for passkeys |
 
-`GEN-041`: All automation MUST run inside the WSL Ubuntu distribution on the owner workstation and in bash on Linux CI, without modification. Windows-native shells (PowerShell, cmd, Git Bash) MUST NOT be used to run project commands. Every `Taskfile.yml` task MUST use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed. The only Windows programs automation may call are `/mnt/c/Windows/System32/certutil.exe` (absolute path, because `appendWindowsPath=false`; `task trust-ca`) and the browser (via `wslview`).
+`GEN-041`: All automation MUST run inside the WSL Ubuntu distribution on the owner workstation and in bash on Linux CI, without modification. Windows-native shells (PowerShell, cmd, Git Bash) MUST NOT be used to run project commands. Every `Taskfile.yml` task MUST use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed. The only Windows programs automation may call are `/mnt/c/Windows/System32/certutil.exe` (absolute path, because `appendWindowsPath=false`; `task trust-ca`) and the browser (via `/mnt/c/Windows/explorer.exe` (opens the URL in the default Windows browser)).
 
 ### 4.6 Version pinning
 

@@ -14,7 +14,7 @@ All development happens inside **WSL 2**, distribution `Ubuntu` (Ubuntu 26.04 LT
 - Run every project command (`task`, `uv`, `git`, `docker`, `k3d`, `kubectl`, `helm`, `terraform`, `gcloud`, `gh`, `ollama`) in WSL bash. Never use PowerShell, cmd or Git Bash for project commands.
 - Docker is the native Docker Engine inside WSL (Ubuntu `docker.io` + `docker-buildx`, systemd service `docker`); Docker Desktop is not used.
 - Windows programs are not on the WSL `PATH` (`/etc/wsl.conf` `[interop] appendWindowsPath=false`). Project tools live in `~/.local/bin`; a Windows binary under `/mnt/c` (for example the Windows `claude`, `node` or `gh`) must never be used.
-- Windows is used only for the browser (console, Keycloak, ArgoCD, passkeys with Windows Hello) and for `%UserProfile%\.wslconfig` (`memory=12GB`, `processors=16`, `swap=8GB`, `localhostForwarding=true`). Open URLs from WSL with `wslview <url>`.
+- Windows is used only for the browser (console, Keycloak, ArgoCD, passkeys with Windows Hello) and for `%UserProfile%\.wslconfig` (`memory=12GB`, `processors=16`, `swap=8GB`, `localhostForwarding=true`). Open URLs from WSL with `/mnt/c/Windows/explorer.exe "<url>"`.
 
 ## Agent models and roles (owner instruction, 2026-11-26 — mandatory)
 
