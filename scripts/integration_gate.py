@@ -45,9 +45,9 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.check_ownership import always_allowed_ok
+from scripts.check_ownership import always_allowed_ok, stage_offenders
 from scripts.proc import run
-from scripts.swarm_lib import REPO, Schedule, Stage, is_owned, load_schedule, matches
+from scripts.swarm_lib import REPO, Schedule, Stage, load_schedule
 
 TAIL_LINES = 40
 COMMAND_TIMEOUT_S = 3600
@@ -202,8 +202,9 @@ def g1_ownership(ctx: GateContext) -> CheckResult:
 
     Every path in `git diff --name-only --no-renames -z <base>...<head>` MUST be owned (`owns` minus
     `excludes`) by at least one task of the stage, or match `always_allowed` and satisfy that path's
-    special rule (`scripts/check_ownership.py`). A task is never blamed for a sibling's files; the per-task
-    check on a task branch is `scripts/check_ownership.py --task`.
+    special rule. The rule is `scripts.check_ownership.stage_offenders`, the same function the CLI
+    `scripts/check_ownership.py --stage` uses (ADR 0040 item 7). A task is never blamed for a sibling's
+    files; the per-task check on a task branch is `scripts/check_ownership.py --task`.
     """
     name = "G1 ownership"
     if ctx.stage.mode != "parallel":
@@ -226,15 +227,12 @@ def g1_ownership(ctx: GateContext) -> CheckResult:
         shown = ctx.run(["git", "show", f"{ref}:{path}"], ctx.repo)
         return shown.stdout if shown.returncode == 0 else None
 
-    offenders = []
-    for path in paths:
-        if any(is_owned(task, path) for task in ctx.stage.tasks):
-            continue
-        if matches(path, ctx.schedule.always_allowed) and always_allowed_ok(
-            ctx.repo, path, merge_base.stdout.strip(), ctx.head_sha, read
-        ):
-            continue
-        offenders.append(f"ownership: {path} not owned by any task of {ctx.stage.id}")
+    offenders = stage_offenders(
+        ctx.schedule,
+        ctx.stage,
+        paths,
+        lambda path: always_allowed_ok(ctx.repo, path, merge_base.stdout.strip(), ctx.head_sha, read),
+    )
     if offenders:
         return CheckResult(name, "fail", "; ".join(offenders), 0.0, tail("\n".join(offenders)))
     return CheckResult(name, "pass")

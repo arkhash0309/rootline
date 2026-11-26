@@ -1,13 +1,13 @@
 """Verifies PG-16 (overview §7.7 gate checks G1 to G11, report shape and exit codes), TST-002, TST-010."""
 
 import json
-import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from scripts import integration_gate as gate
+from scripts import proc
 from scripts.integration_gate import CmdResult
 from scripts.swarm_lib import Schedule, Stage, TaskEntry, Week, load_schedule
 
@@ -171,12 +171,7 @@ def git_repo(root: Path, files: dict[str, str]) -> tuple[Path, str, str]:
     root.mkdir(parents=True)
 
     def git(*args: str) -> str:
-        done = subprocess.run(  # noqa: S603
-            ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        done = proc.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args])
         return done.stdout.strip()
 
     git("init", "-q", "-b", "main")

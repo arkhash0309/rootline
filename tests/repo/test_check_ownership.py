@@ -214,3 +214,52 @@ def test_cli_exit_codes(
     assert check_ownership.main(["--task", "W9-T01", "--base", base]) == 1
     assert capsys.readouterr().out.strip() == "ownership: svc/b/q.py not owned by W9-T01"
     assert check_ownership.main(["--task", "W9-T03", "--base", base, "--branch", "HEAD"]) == 0
+
+
+def stage_offenders(tmp_path: Path, root: Path, base: str, stage: str = "W9-P1") -> list[str]:
+    schedule_file = tmp_path / "schedule.yaml"
+    schedule_file.write_text(SCHEDULE, encoding="utf-8")
+    return check_ownership.check_stage(load_schedule(schedule_file), stage, base, "HEAD", root)
+
+
+def test_stage_mode_passes_a_path_owned_by_any_task_of_the_stage(
+    tmp_path: Path, repo: tuple[Path, str]
+) -> None:
+    root, base = repo
+    commit_change(root, {"svc/a/x.py": "x = 2\n", "svc/b/q.py": "q = 1\n", "wiki/log.md": "# Log\n- x\n"})
+    assert stage_offenders(tmp_path, root, base) == []
+
+
+def test_stage_mode_reports_a_path_owned_by_no_task(tmp_path: Path, repo: tuple[Path, str]) -> None:
+    root, base = repo
+    commit_change(root, {"svc/b/q.py": "q = 1\n", "svc/c/z.py": "z = 1\n", "svc/a/locked/y.py": "y = 2\n"})
+    assert stage_offenders(tmp_path, root, base) == [
+        "ownership: svc/a/locked/y.py not owned by any task of W9-P1",
+        "ownership: svc/c/z.py not owned by any task of W9-P1",
+    ]
+
+
+def test_stage_mode_sequential_stage_passes_every_path(tmp_path: Path, repo: tuple[Path, str]) -> None:
+    root, base = repo
+    commit_change(root, {"anything/at/all.txt": "x\n"})
+    assert stage_offenders(tmp_path, root, base, stage="W9-S1") == []
+
+
+def test_stage_mode_cli_exit_codes(
+    tmp_path: Path,
+    repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root, base = repo
+    schedule_file = tmp_path / "schedule.yaml"
+    schedule_file.write_text(SCHEDULE, encoding="utf-8")
+    monkeypatch.setattr(check_ownership, "SCHEDULE_PATH", schedule_file)
+    monkeypatch.setattr(check_ownership, "REPO", root)
+    commit_change(root, {"svc/b/q.py": "q = 1\n", "svc/c/z.py": "z = 1\n"})
+    assert check_ownership.main(["--stage", "W9-P1", "--base", base]) == 1
+    assert capsys.readouterr().out.strip() == "ownership: svc/c/z.py not owned by any task of W9-P1"
+    assert check_ownership.main(["--stage", "W9-NOPE", "--base", base]) == 2
+    assert "unknown stage: W9-NOPE" in capsys.readouterr().err
+    assert check_ownership.main(["--stage", "W9-P1", "--base", "no-such-ref"]) == 2
+    assert "git merge-base no-such-ref HEAD failed" in capsys.readouterr().err

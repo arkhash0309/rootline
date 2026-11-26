@@ -2,6 +2,12 @@
 
 Usage:
   uv run python scripts/check_ownership.py --task <id> --base <sha> [--branch <ref>]
+  uv run python scripts/check_ownership.py --stage <id> --base <sha> [--branch <ref>]
+
+Exactly one of `--task` and `--stage` is required. `--task` is the check of a task branch of a parallel
+stage. `--stage` is the check of an integration branch (gate check G1, ADR 0040 item 7): a changed path
+passes when at least one task of the stage owns it (`owns` minus `excludes`), or it is always-allowed and
+satisfies that path's special rule. A sequential stage has no `owns` lists and passes every path.
 
 Changed files are `git diff --name-only --diff-filter=ACMRD --no-renames -z <base>...<branch>`
 (`--branch` defaults to `HEAD`). A task without `owns` (a task of a sequential stage) passes for every
@@ -17,8 +23,9 @@ Special rules per always-allowed pattern:
   `devDependencies`, `peerDependencies` and `optionalDependencies`.
 - Every other always-allowed path: no rule.
 
-Exit codes: 0 every changed path is owned; 1 at least one offending path (one line per path,
-`ownership: <path> not owned by <task>`); 2 unknown task or a git failure.
+Exit codes: 0 every changed path passes; 1 at least one offending path (one stdout line per path,
+`ownership: <path> not owned by <task id>` or `ownership: <path> not owned by any task of <stage id>`);
+2 unknown task or stage, or a git failure (one stderr line).
 """
 
 from __future__ import annotations
@@ -36,7 +43,16 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.proc import run
-from scripts.swarm_lib import REPO, SCHEDULE_PATH, Schedule, is_owned, load_schedule, matches
+from scripts.swarm_lib import (
+    REPO,
+    SCHEDULE_PATH,
+    Schedule,
+    Stage,
+    TaskEntry,
+    is_owned,
+    load_schedule,
+    matches,
+)
 
 PYPROJECT_DEPENDENCY_KEYS = (("project", "dependencies"), ("project", "optional-dependencies"))
 PYPROJECT_DEPENDENCY_TABLES = ("dependency-groups",)
@@ -143,6 +159,41 @@ def always_allowed_ok(
     return True
 
 
+def path_offenders(
+    schedule: Schedule,
+    owners: Sequence[TaskEntry],
+    paths: Sequence[str],
+    rule_ok: Callable[[str], bool],
+    message: str,
+) -> list[str]:
+    """The single ownership rule used by `--task`, `--stage` and gate check G1 (ADR 0040 item 7).
+
+    A path passes when it is owned (`owns` minus `excludes`) by at least one task of `owners`, or it matches
+    `always_allowed` and `rule_ok(path)` (the special rule of that path) is True. `message` is the
+    description after `not owned by ` in each returned line `ownership: <path> not owned by <message>`.
+    """
+    offenders = []
+    for path in paths:
+        if any(is_owned(task, path) for task in owners):
+            continue
+        if matches(path, schedule.always_allowed) and rule_ok(path):
+            continue
+        offenders.append(f"ownership: {path} not owned by {message}")
+    return offenders
+
+
+def stage_offenders(
+    schedule: Schedule,
+    stage: Stage,
+    paths: Sequence[str],
+    rule_ok: Callable[[str], bool],
+) -> list[str]:
+    """One `ownership: <path> not owned by any task of <stage>` line per offending path of `stage`."""
+    if stage.mode != "parallel":
+        return []
+    return path_offenders(schedule, stage.tasks, paths, rule_ok, f"any task of {stage.id}")
+
+
 def check_task(schedule: Schedule, task_id: str, base: str, branch: str, repo: Path = REPO) -> list[str]:
     """Return one `ownership: <path> not owned by <task>` line per offending path."""
     found = schedule.find_task(task_id)
@@ -152,28 +203,50 @@ def check_task(schedule: Schedule, task_id: str, base: str, branch: str, repo: P
     if not task.owns:
         return []
     merge_base = git(repo, "merge-base", base, branch).strip()
-    offenders = []
-    for path in changed_files(repo, base, branch):
-        if is_owned(task, path):
-            continue
-        if matches(path, schedule.always_allowed) and always_allowed_ok(repo, path, merge_base, branch):
-            continue
-        offenders.append(f"ownership: {path} not owned by {task_id}")
-    return offenders
+    return path_offenders(
+        schedule,
+        [task],
+        changed_files(repo, base, branch),
+        lambda path: always_allowed_ok(repo, path, merge_base, branch),
+        task_id,
+    )
+
+
+def check_stage(schedule: Schedule, stage_id: str, base: str, branch: str, repo: Path = REPO) -> list[str]:
+    """Return one `ownership: <path> not owned by any task of <stage>` line per offending path."""
+    stage = schedule.get_stage(stage_id)
+    if stage is None:
+        raise KeyError(stage_id)
+    if stage.mode != "parallel":
+        return []
+    merge_base = git(repo, "merge-base", base, branch).strip()
+    return stage_offenders(
+        schedule,
+        stage,
+        changed_files(repo, base, branch),
+        lambda path: always_allowed_ok(repo, path, merge_base, branch),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--task", required=True)
+    selector = parser.add_mutually_exclusive_group(required=True)
+    selector.add_argument("--task")
+    selector.add_argument("--stage")
     parser.add_argument("--base", required=True)
     parser.add_argument("--branch", default="HEAD")
     args = parser.parse_args(argv)
+    schedule = load_schedule(SCHEDULE_PATH)
     try:
-        offenders = check_task(load_schedule(SCHEDULE_PATH), args.task, args.base, args.branch, REPO)
+        if args.task is not None:
+            offenders = check_task(schedule, args.task, args.base, args.branch, REPO)
+        else:
+            offenders = check_stage(schedule, args.stage, args.base, args.branch, REPO)
     except KeyError:
-        print(f"unknown task: {args.task}", file=sys.stderr)
+        kind, ident = ("task", args.task) if args.task is not None else ("stage", args.stage)
+        print(f"unknown {kind}: {ident}", file=sys.stderr)
         return 2
     except GitError as error:
         print(str(error), file=sys.stderr)

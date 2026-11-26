@@ -149,8 +149,9 @@ class RealBackend:
 
     @contextmanager
     def port_forward(self, cmd: list[str]) -> Iterator[None]:
-        # S603: `cmd` is the kubectl argument list built by build_port_forward_cmd, no shell is involved.
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)  # noqa: S603
+        process = subprocess.Popen(  # noqa: S603 - cmd is the kubectl argument list, run without a shell (GEN-041)
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        )
         try:
             ready = process.stdout is not None and wait_for_forwarding(
                 process.stdout, PORT_FORWARD_READY_TIMEOUT_S

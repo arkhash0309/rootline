@@ -17,7 +17,6 @@ def run(
     input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     full_env = {**os.environ, **(env or {})}
-    # S603: `cmd` is a list passed without a shell; every caller is a repository script (GEN-041).
-    return subprocess.run(  # noqa: S603
+    return subprocess.run(  # noqa: S603 - cmd is an argument list run without a shell (GEN-041)
         cmd, check=check, capture_output=capture, text=True, env=full_env, timeout=timeout, input=input_text
     )
