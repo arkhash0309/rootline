@@ -37,6 +37,8 @@ Mirrors `2026-11-26-rootline-schedule.yaml` (week 1); `uv run python scripts/swa
 **Requirement IDs:** GEN-001, GEN-002, GEN-003, GEN-022, GEN-023, WIK-031, PG-8.
 **Depends on:** nothing. **Branch:** `feat/w1-repo-skeleton`.
 
+> **Amended 2026-11-26 after W1-T01 was merged (`develop` at `4898699`), per PG-18, PG-19 and PG-20 (overview §5; ADRs 0037, 0038, 0039).** Three code blocks of this task changed after the merge: (1) the `tests/repo/test_layout.py` block in Step 1 is now the `ruff format` output of the original block and its `ALLOWED_TOP_LEVEL` set gains `".hypothesis"`, `".coverage"`, `"coverage.xml"`, `"htmlcov"` and `".swarm"`; (2) the `[tool.ruff]` table in Step 3 gains `extend-exclude = ["*.md"]`; (3) the Step 9 trailer is the implementer trailer of overview §7.1. The files committed in `4898699` still have the original content. **W1-T16 Step 0** brings `tests/repo/test_layout.py` and `pyproject.toml` in line with these blocks in one commit; W1-T01 is not re-run. The committed history is not rewritten.
+
 **Files:**
 - Create: `pyproject.toml` (workspace root), `uv.lock` (generated)
 - Create: `libs/py-common/pyproject.toml`, `libs/py-common/rootline_common/__init__.py`
@@ -75,6 +77,7 @@ def repo() -> Path:
 
 ```python
 """Verifies GEN-001, GEN-002, GEN-003, WIK-031."""
+
 import importlib
 import tomllib
 from pathlib import Path
@@ -82,27 +85,94 @@ from pathlib import Path
 import pytest
 
 DIRS = [
-    ".claude/skills/rootline-wiki", ".github", "apps/console",
-    "services/api", "services/agent", "services/gate", "services/faultlab",
-    "services/mcp-k8s", "services/mcp-telemetry", "services/mcp-gitops",
-    "libs/py-common", "libs/py-mcpkit", "libs/py-llm", "libs/py-schemas",
-    "policies/opa", "policies/kyverno", "prompts", "eval/runner", "eval/baselines",
-    "eval/reports", "deploy/root", "deploy/charts/rootline", "deploy/values",
-    "deploy/upstream", "infra/terraform/persistent", "infra/terraform/cluster",
-    "infra/k3d", "scripts", "docs/superpowers/specs", "docs/superpowers/plans",
-    "docs/writeup", "wiki",
+    ".claude/skills/rootline-wiki",
+    ".github",
+    "apps/console",
+    "services/api",
+    "services/agent",
+    "services/gate",
+    "services/faultlab",
+    "services/mcp-k8s",
+    "services/mcp-telemetry",
+    "services/mcp-gitops",
+    "libs/py-common",
+    "libs/py-mcpkit",
+    "libs/py-llm",
+    "libs/py-schemas",
+    "policies/opa",
+    "policies/kyverno",
+    "prompts",
+    "eval/runner",
+    "eval/baselines",
+    "eval/reports",
+    "deploy/root",
+    "deploy/charts/rootline",
+    "deploy/values",
+    "deploy/upstream",
+    "infra/terraform/persistent",
+    "infra/terraform/cluster",
+    "infra/k3d",
+    "scripts",
+    "docs/superpowers/specs",
+    "docs/superpowers/plans",
+    "docs/writeup",
+    "wiki",
 ]
 PACKAGES = [
-    "rootline_api", "rootline_agent", "rootline_gate", "rootline_faultlab",
-    "rootline_mcp_k8s", "rootline_mcp_telemetry", "rootline_mcp_gitops",
-    "rootline_common", "rootline_mcpkit", "rootline_llm", "rootline_schemas", "rootline_eval",
+    "rootline_api",
+    "rootline_agent",
+    "rootline_gate",
+    "rootline_faultlab",
+    "rootline_mcp_k8s",
+    "rootline_mcp_telemetry",
+    "rootline_mcp_gitops",
+    "rootline_common",
+    "rootline_mcpkit",
+    "rootline_llm",
+    "rootline_schemas",
+    "rootline_eval",
 ]
 ALLOWED_TOP_LEVEL = {
-    ".claude", ".github", "apps", "services", "libs", "policies", "prompts", "eval",
-    "deploy", "infra", "scripts", "docs", "wiki", "tests", "Taskfile.yml", "pyproject.toml",
-    "uv.lock", "versions.yaml", "AGENTS.md", "CLAUDE.md", "README.md", "LICENSE",
-    ".gitignore", ".gitattributes", ".env.example", ".git", ".venv", ".omc", ".superpowers",
-    ".env.local", ".env.gke", "data", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+    ".claude",
+    ".github",
+    "apps",
+    "services",
+    "libs",
+    "policies",
+    "prompts",
+    "eval",
+    "deploy",
+    "infra",
+    "scripts",
+    "docs",
+    "wiki",
+    "tests",
+    "Taskfile.yml",
+    "pyproject.toml",
+    "uv.lock",
+    "versions.yaml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes",
+    ".env.example",
+    ".git",
+    ".venv",
+    ".omc",
+    ".superpowers",
+    ".env.local",
+    ".env.gke",
+    "data",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".hypothesis",
+    ".coverage",
+    "coverage.xml",
+    "htmlcov",
+    ".swarm",
 }
 
 
@@ -148,8 +218,14 @@ def test_agent_instruction_files(repo: Path, name: str) -> None:
 
 def test_pr_template_headings(repo: Path) -> None:
     text = (repo / ".github/pull_request_template.md").read_text(encoding="utf-8")
-    for h in ["## Summary", "## Requirement IDs", "## Wiki pages updated", "## Tests",
-              "## Screenshots (UI only)", "## Cost impact"]:
+    for h in [
+        "## Summary",
+        "## Requirement IDs",
+        "## Wiki pages updated",
+        "## Tests",
+        "## Screenshots (UI only)",
+        "## Cost impact",
+    ]:
         assert h in text
 ```
 
@@ -211,6 +287,7 @@ markers = [
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "RUF"]
@@ -221,6 +298,8 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 ```
+
+`extend-exclude = ["*.md"]` (PG-19, ADR 0038): ruff `0.17.6` (the version in `uv.lock` at `4898699`) formats fenced `python` code blocks inside Markdown files, so `uv run ruff format --check .` would otherwise fail on the spec and the plan files, whose code blocks are documentation, not source. The pattern matches the file name, so it excludes every `*.md` file in every directory, for both `ruff check` and `ruff format`.
 
 The dependency line constraints above are placeholders for the *lines* only; W1-T02 adjusts every constraint so it admits the version resolved into `versions.yaml`, and `uv.lock` pins the exact version.
 
@@ -329,6 +408,8 @@ Before any task, load the `rootline-wiki` skill (or read `.claude/skills/rootlin
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 ```
 
+This block is committed verbatim in `CLAUDE.md` and `AGENTS.md` (`4898699`) and is not changed by the 2026-11-26 amendment. Its "currently" line names the planning session's trailer. Which trailer each role writes is fixed by the table in overview §7.1 "Commit attribution trailers (GEN-022, PG-20)", and that table decides when the two differ. Changing the committed `CLAUDE.md` text needs the owner's approval (overview §5 PG-20).
+
 - [ ] **Step 8: Sync and run the tests**
 
 Run: `uv sync --all-packages` then `uv run pytest tests/repo/test_layout.py -v`
@@ -340,21 +421,24 @@ Expected: all PASS. `uv.lock` is created.
 git add -A
 git commit -m "build: add repository skeleton and uv workspace
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
 
 ### Task W1-T16: Swarm and integration tooling
 
-**Requirement IDs:** PG-16 (overview §7), GEN-041, WIK-020, TST-002, TST-010.
+**Requirement IDs:** PG-16 (overview §7), PG-18, PG-19, PG-20, GEN-001, GEN-022, CI-001, GEN-041, WIK-020, TST-002, TST-010.
 **Depends on:** W1-T01. Runs in stage W1-S2, before every parallel stage (schedule `W1-S2`). **Branch:** `feat/w1-swarm-tooling`.
 
 **Files:**
+- Modify (Step 0, its own commit): `tests/repo/test_layout.py` (replace with the W1-T01 Step 1 block), `pyproject.toml` (add `extend-exclude = ["*.md"]` to `[tool.ruff]`)
 - Create: `scripts/proc.py` (moved here from W1-T06), `scripts/swarm_schedule.py`, `scripts/check_ownership.py`, `scripts/integration_gate.py`, `scripts/cluster_smoke.py`, `scripts/swarm_lib.py`
 - Create: `tests/registry/README.md`, `tests/smoke/README.md`, `tests/registry/schema.json`, `tests/smoke/schema.json`
-- Modify: `.gitattributes` (add `wiki/log.md merge=union`), `.gitignore` (add `.swarm/`)
+- Modify: `.gitattributes` (add `wiki/log.md merge=union`), `.gitignore` (add `.swarm/`, `.hypothesis/`, `coverage.xml`)
 - Test: `tests/repo/test_swarm_schedule.py`, `tests/repo/test_check_ownership.py`, `tests/repo/test_integration_gate.py`, `tests/repo/test_cluster_smoke.py`
+
+W1-T16 is in a sequential stage, so the schedule gives it no `owns` list and `scripts/check_ownership.py` passes it for every path (overview §7.4, W1-T16 Step 3). Changing `tests/repo/test_layout.py`, a W1-T01 file, is therefore allowed here and needs no schedule change.
 
 **Interfaces:**
 - `scripts.proc.run(cmd, *, check=True, capture=True, env=None, timeout=600, input_text=None) -> CompletedProcess[str]` (exact code in W1-T06 step 2; W1-T06 now imports it instead of creating it).
@@ -363,6 +447,36 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - CLI `uv run python scripts/check_ownership.py --task <id> --base <sha> [--branch <ref>]` → exit 0, or exit 1 with one line per offending path `ownership: <path> not owned by <task>`.
 - CLI `uv run python scripts/integration_gate.py --stage <id> [--branch <ref>] [--base origin/develop] [--pr-body <file>] [--report-only]` → checks G1–G11 of overview §7.7 (G12 is `cluster_smoke.py`), report `.swarm/gates/<stage>.json`, exit 1 on any `fail` (exit 0 with `--report-only`).
 - CLI `uv run python scripts/cluster_smoke.py [--context k3d-rootline] [--timeout 1200]` → G12.
+
+- [ ] **Step 0: Fix the W1-T01 review findings (PG-18, PG-19; ADRs 0037, 0038) in one commit**
+
+Before Step 1, on `feat/w1-swarm-tooling` (branched from the `develop` tip, which contains `4898699` and this plan amendment). This is a separate commit so the reviewer can check it apart from the tooling.
+
+1. Run `uv run pytest tests/repo/test_layout.py -v`. Expected on `4898699`: `test_no_unexpected_top_level_entries` FAILS with `new top-level entries need an ADR: ['.swarm']` when the coordinator's `.swarm/` directory exists in the checkout. If `.swarm/` does not exist in the checkout, the test passes; continue anyway.
+2. Run `uv run ruff format --check .`. Expected before this step: exit 1; ruff `0.17.6` prints one `unformatted: File would be reformatted` entry per file, each followed by a `--> <path>:<line>:<col>` line, for `tests/repo/test_layout.py` and for one or more `*.md` files under `docs/superpowers/` (the spec and the plan files contain unformatted `python` code blocks), and ends with `<n> files would be reformatted, <m> files already formatted`.
+3. Replace the whole content of `tests/repo/test_layout.py` with the W1-T01 Step 1 `tests/repo/test_layout.py` block, character for character. Do not edit `tests/repo/conftest.py`.
+4. In the root `pyproject.toml`, add the line `extend-exclude = ["*.md"]` directly after `target-version = "py312"` in `[tool.ruff]`. Change nothing else in the file. `uv.lock` does not change (ruff settings are not dependencies). If `uv lock --check` reports a change, stop and report `BLOCKED`.
+5. Run, in this order, and require each result:
+
+| Command | Required result |
+|---|---|
+| `uv run ruff format --check .` | exit 0; the last line is `14 files already formatted` (12 package `__init__.py` files, `tests/repo/conftest.py`, `tests/repo/test_layout.py`) |
+| `uv run ruff check .` | exit 0, `All checks passed!` |
+| `uv run pytest tests/repo -v` | exit 0; 50 tests pass on `4898699` plus this commit |
+| `git diff --stat HEAD` | exactly two files changed: `pyproject.toml`, `tests/repo/test_layout.py` |
+
+If `uv run ruff format --check .` still lists a file, the only allowed fix is `uv run ruff format <that file>` when the file is `tests/repo/test_layout.py`; for any other file stop and report `BLOCKED` with the listing.
+
+6. Commit:
+
+```bash
+git add pyproject.toml tests/repo/test_layout.py
+git commit -m "style: ruff-format layout test, allow .swarm and tool outputs, exclude Markdown from ruff
+
+Implements PG-18 (ADR 0037) and PG-19 (ADR 0038) from the W1-T01 review.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -443,7 +557,7 @@ Run: `uv run pytest tests/repo/test_swarm_schedule.py tests/repo/test_check_owne
 
 - [ ] **Step 6: Registry and smoke documentation** — `tests/registry/README.md` and `tests/smoke/README.md` state the formats of overview §7.7, the file-naming rule (`<TST-ID>--<task-id>.yaml`, `<component>.yaml`), who creates them (the task that introduces the test or deploys the component), and the exemption lines (`registry-removal:`, `test-removal:`, `baseline-change:`). `schema.json` files are JSON Schema draft 2020-12 for each format.
 
-- [ ] **Step 7: `.gitattributes` and `.gitignore`** — append `wiki/log.md merge=union` to `.gitattributes` and `.swarm/` to `.gitignore`.
+- [ ] **Step 7: `.gitattributes` and `.gitignore`** — append `wiki/log.md merge=union` to `.gitattributes`; append these three lines, in this order, to the end of `.gitignore` under a comment line `# Swarm state and tool outputs (W1-T16, ADR 0037)`: `.swarm/`, `.hypothesis/`, `coverage.xml`. (`.coverage` and `htmlcov/` are already ignored by the `# Python` block.)
 
 - [ ] **Step 8: Run tests** → PASS; `uv run python scripts/swarm_schedule.py validate` → `schedule OK: 8 weeks, 39 stages, 94 tasks`.
 
@@ -760,7 +874,7 @@ Replace the stub's content with: a heading `# Versions`, the line `Pin date: <pi
 git add versions.yaml scripts/ deploy/root/files/versions.yaml .github/versions.env pyproject.toml uv.lock tests/repo/test_versions.py libs services eval
 git commit -m "build: pin versions in versions.yaml and render derived files
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -771,7 +885,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Depends on:** W1-T01. **Parallel-safe** with W1-T02. **Branch:** `feat/w1-wiki`.
 
 **Files:**
-- Create: every file in the WIK-002 tree except `wiki/adr/0001…` (W1-T04) and `wiki/versions.md` (W1-T02)
+- Create: every file in the WIK-002 tree except `wiki/adr/0001…` (W1-T04), `wiki/adr/0037…0039` (already on `develop`, PG-18 … PG-20; do not edit) and `wiki/versions.md` (W1-T02)
 - Create: `wiki/components/<slug>.md` for each slug in `COMPONENT_PAGES` below
 - Create: `scripts/wiki_lint.py`
 - Test: `tests/repo/test_wiki_lint.py`
@@ -975,7 +1089,7 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 
 | File | Required content |
 |---|---|
-| `wiki/index.md` | `# Rootline wiki`, a paragraph quoting WIK-001's spec/wiki split, then one bullet per wiki file: `- [<path>](<path>) — <one-line description>` |
+| `wiki/index.md` | `# Rootline wiki`, a paragraph quoting WIK-001's spec/wiki split, then one bullet per wiki file: `- [<path>](<path>) — <one-line description>`. "Every wiki file" includes `adr/0037-swarm-state-dir.md`, `adr/0038-ruff-scope-and-formatting.md` and `adr/0039-commit-trailers.md`, which are on `develop` before this task starts (PG-18 … PG-20); without their bullets `wiki_lint.py` reports `index-missing` for them |
 | `wiki/status.md` | WIK-012 format; `## Current milestone: Week 1 — Foundations`; In progress lists W1 tasks; Blockers `None` |
 | `wiki/log.md` | `# Log` then `## <today>` and `- [agent] Created wiki skeleton (W1-T03)` |
 | `wiki/architecture.md` | the spec §5.1 diagram verbatim in a code block; a table `| Component | Namespace | Spec | Wiki page |` for ARC-001 |
@@ -1001,7 +1115,7 @@ Expected: only `missing-adr: 0001` … `missing-adr: 0025` (fixed by W1-T04). Do
 git add wiki scripts/wiki_lint.py tests/repo/test_wiki_lint.py
 git commit -m "docs(wiki): add wiki skeleton and wiki lint
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1014,6 +1128,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0036-wsl-development.md` (36 files)
 - Modify: `wiki/index.md` (list them), `docs/superpowers/specs/2026-11-25-rootline-design.md` §26 (rows already added at planning time; fill the `ADR` column links)
+- Do not create, edit or renumber: `wiki/adr/0037-swarm-state-dir.md`, `wiki/adr/0038-ruff-scope-and-formatting.md`, `wiki/adr/0039-commit-trailers.md`. The planner wrote them on 2026-11-26 (branch `docs/w1-plan-gaps`, PG-18 … PG-20), so they are on `develop` before stage W1-P1 starts. Their spec §26 rows already link them; leave those three rows unchanged. The next free ADR number after this task is **0040**.
 
 - [ ] **Step 1: Write each ADR from this table**
 
@@ -1069,7 +1184,7 @@ Run: `uv run pytest tests/repo -v` → PASS.
 git add wiki docs/superpowers/specs/2026-11-25-rootline-design.md
 git commit -m "docs(wiki): add ADRs 0001-0036
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 git push -u origin feat/w1-wiki
 gh pr create --base develop --title "docs(wiki): wiki skeleton, lint and ADRs" --body-file .github/pull_request_template.md
 ```
@@ -1217,7 +1332,7 @@ Run: `uv run pytest tests/repo/test_skill.py -v` → PASS.
 git add .claude/skills/rootline-wiki/SKILL.md tests/repo/test_skill.py wiki/log.md
 git commit -m "docs: add rootline-wiki agent skill
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1613,7 +1728,7 @@ Run: `task doctor` → prints one line per check. FAIL lines for missing tools a
 git add Taskfile.yml scripts .env.example tests/repo/test_doctor.py pyproject.toml uv.lock
 git commit -m "build: add Taskfile, task doctor and .env.example
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2135,7 +2250,7 @@ Add `wiki/components/` is not needed for libraries; append to `wiki/log.md`: `- 
 git add libs/py-common wiki/log.md uv.lock
 git commit -m "feat(py-common): add ids, time, logging, problem+json, health and request-id modules
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2174,7 +2289,7 @@ Do not edit by hand except through the owner's documented procedures in the `roo
 git -C ../rootline-env add README.md
 git -C ../rootline-env commit -m "docs: add README
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 git -C ../rootline-env push origin main
 ```
 
@@ -2493,7 +2608,7 @@ In `rootline-env` (direct push is allowed before the W3 ruleset exists):
 git -C "$ROOTLINE_ENV_DIR" add -A
 git -C "$ROOTLINE_ENV_DIR" commit -m "feat: render workload from opentelemetry-demo 0.42.8
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 git -C "$ROOTLINE_ENV_DIR" tag baseline-v1
 git -C "$ROOTLINE_ENV_DIR" push origin main --tags
 ```
@@ -3281,6 +3396,8 @@ jobs:
           echo '${{ toJSON(needs) }}' > needs.json
           python3 -c "import json,sys;n=json.load(open('needs.json'));bad=[k for k,v in n.items() if v['result'] not in ('success','skipped')];print('failed:',bad);sys.exit(1 if bad else 0)"
 ```
+
+`uv run ruff format --check .` stays exactly as written. Do not add a `uv run ruff format .` step and do not reformat any file in this task: Markdown files are excluded from ruff by `extend-exclude = ["*.md"]` in the root `pyproject.toml`, and `tests/repo/test_layout.py` is already ruff-formatted (both done by W1-T16 Step 0, PG-19). W1-T14 runs in the parallel stage W1-P3 and may change only its `owns` paths (overview §7.4); a repository-wide reformat would change files owned by W1-T09, W1-T10 and W1-T11 and fail gate check G1. If the `python` job's format step fails on a file, the failure belongs to the task that last changed that file (overview §7.8).
 
 `V_*` variables come from `.github/versions.env` (W1-T02). Third-party action versions above are the major versions current on the planning date; on the pin date use the latest major of each and pin it by commit SHA (`uses: owner/action@<40-hex sha> # vX.Y.Z`), recording the SHAs in `wiki/versions.md`. `scripts/check_contracts.py` is created in W4-T06.
 
