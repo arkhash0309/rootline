@@ -17,7 +17,7 @@ Spec §3 row 0009 is the source of this wording. It is implemented by requiremen
 
 ## Consequences
 
-- Passkeys must be registered again after every GKE spin-up, because the realm database is recreated.
+- Passkeys are registered on first login in each GKE session, because the domain `D` changes per spin-up (spec §10.3, SEC-021; documented as an expected demo step in the runbook).
 - Keycloak runs at version `26.8.x` and is configured declaratively by the keycloak-config-cli Job (SEC-012).
 
 ## Alternatives considered

@@ -9,9 +9,7 @@ Plan gap: PG-17 (`docs/superpowers/plans/2026-11-26-rootline-00-overview.md` §5
 
 PG-17 (spec reference GEN-040, GEN-041, GEN-060, AGT-053, CST-011, INF-031): Owner instruction (2026-11-26): all development moves from Windows-native shells into WSL 2 to use the CPU cores better.
 
-The owner instruction of 2026-11-26 moves all development into WSL 2.
-
-The spec does not answer these questions, so spec §0.3 applies: the simplest, cheapest and safest option is chosen. Each question is a row of the spec gap log in spec §26.
+The spec does not answer these questions. The decision rests on: Owner instruction 2026-11-26 (CLAUDE.md). Each question is a row of the spec gap log in spec §26.
 
 ## Decision
 

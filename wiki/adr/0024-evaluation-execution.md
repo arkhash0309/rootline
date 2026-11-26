@@ -5,7 +5,7 @@ Date: 2026-11-26
 
 ## Context
 
-Sweeps replay at least 300 scenarios and must stay inside the USD 48 evaluation cap (CST-001). Running the runner on the host removes the need for cluster memory, and the Message Batches API halves the price when requests are submitted in lockstep.
+Sweep 1 replays the 143 test-split scenarios (the test-half of 86 scenarios for `all-large` and the three ablations), as EVL-060 (spec §15.8) and CST-002 state, and must stay inside the USD 48 evaluation cap (CST-001). Running the runner on the host removes the need for cluster memory, and the Message Batches API halves the price when requests are submitted in lockstep.
 
 This decision is row 0024 of the ADR index in spec §3. Primary reason recorded there: 50% cost reduction; no cluster RAM needed.
 

@@ -2,7 +2,7 @@
 
 Requirement IDs: GEN-040, GEN-041, GEN-050, PG-17 (ADR 0036), PG-13 (ADR 0032), O-8 (`docs/superpowers/plans/2026-11-26-rootline-00-overview.md` §2).
 Source: `docs/superpowers/specs/2026-11-25-rootline-design.md` §4.5.
-Last verified: not re-run. The commands follow the install methods recorded in GEN-040 for 2026-11-26; this page was written on 2026-11-27 from that table and has not been executed again.
+Reconstruction notice: the commands on this page were reconstructed on 2026-11-27 by the implementing agent from the GEN-040 install-method table. They are not a record of the commands run on 2026-11-26, and none of them has been executed or verified. The owner replaces this notice after running them.
 
 This runbook installs everything the project needs on the owner workstation: a Windows 11 PC (15.6 GB RAM, 20 logical CPUs) on which all development runs inside WSL 2. Run every command in a WSL `Ubuntu` bash shell unless a heading says Windows. Never use PowerShell, cmd or Git Bash for project commands (GEN-041).
 
@@ -51,11 +51,13 @@ Windows runs nothing else for the project. From WSL, a URL is opened in the Wind
    if command -v fnm >/dev/null 2>&1; then eval "$(fnm env --shell bash)"; fi
    ```
 
+   Apply the change to the current shell with `source ~/.bashrc` (or open a new shell) before running any command from the Tools section.
+
 5. Create the directories used below: `mkdir -p ~/.local/bin ~/.local/opt ~/projects`.
 
 ## Tools
 
-Versions marked "from `versions.yaml`" are the values of the keys of the same name in `versions.yaml` (GEN-050, resolved by W1-T02). Set the shell variable named in the command to that value before running it. All user-level binaries go to `~/.local/bin`.
+Versions marked "from `versions.yaml`" are the values of the keys of the same name in `versions.yaml` (GEN-050, resolved by W1-T02); the keys `k3d`, `opa` and `terraform` exist in GEN-050. Set the shell variable named in the command to that value before running it. Tools that GEN-050 has no key for (`kubectl`, `helm`, `go-task`, `gh`) carry a literal version in their command block, marked "pinned here, not yet in versions.yaml (W1-T02 may add the key)". The literal versions are the versions reported on 2026-11-27 by the binaries already installed in `~/.local/bin` on the workstation (`kubectl version --client`, `helm version --short`, `task --version`, `gh --version`), and `https://dl.k8s.io/release/stable.txt` returned `v1.37.3` on the same day. All user-level binaries go to `~/.local/bin`.
 
 ### Root part: script `~/rootline-root-setup.sh`
 
@@ -98,7 +100,8 @@ chmod +x ~/.local/bin/k3d
 ### kubectl
 
 ```bash
-KUBECTL_VERSION=<value of key kubectl in versions.yaml, written with a leading v>
+# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires the cluster minor plus or minus 1
+KUBECTL_VERSION=v1.37.3
 curl -fsSL -o ~/.local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
 chmod +x ~/.local/bin/kubectl
 ```
@@ -108,7 +111,8 @@ The kubectl minor version must match the cluster minor version plus or minus 1. 
 ### Helm
 
 ```bash
-HELM_VERSION=<value of key helm in versions.yaml, written with a leading v>
+# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires a 3.x release
+HELM_VERSION=v3.22.1
 curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp linux-amd64/helm
 install -m 0755 /tmp/linux-amd64/helm ~/.local/bin/helm
 ```
@@ -116,7 +120,8 @@ install -m 0755 /tmp/linux-amd64/helm ~/.local/bin/helm
 ### go-task
 
 ```bash
-TASK_VERSION=<value of key go-task in versions.yaml, without a leading v>
+# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires a 3.x release
+TASK_VERSION=3.54.0
 curl -fsSL "https://github.com/go-task/task/releases/download/v${TASK_VERSION}/task_linux_amd64.tar.gz" | tar -xz -C ~/.local/bin task
 ```
 
@@ -124,6 +129,7 @@ curl -fsSL "https://github.com/go-task/task/releases/download/v${TASK_VERSION}/t
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc   # or open a new shell, so that `uv` is on the PATH
 uv python install 3.12
 ```
 
@@ -133,6 +139,7 @@ The installer places `uv` in `~/.local/bin`. The system Python 3.14 is not used.
 
 ```bash
 curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir ~/.local/share/fnm --skip-shell
+source ~/.bashrc   # or open a new shell, so that `fnm` is on the PATH
 fnm install 24
 fnm default 24
 ```
@@ -151,6 +158,8 @@ unzip -o /tmp/terraform.zip terraform -d ~/.local/bin
 
 ### gcloud CLI
 
+The tarball URL below follows the `rapid` channel and always serves the newest release; the version is unpinned: GEN-040 does not pin this tool. The release installed on the workstation on 2026-11-27 reports `Google Cloud SDK 594.0.1` (`gcloud --version`).
+
 ```bash
 curl -fsSL -o /tmp/gcloud.tar.gz https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
 tar -xzf /tmp/gcloud.tar.gz -C ~/.local/opt
@@ -163,7 +172,8 @@ ln -sf ~/.local/opt/google-cloud-sdk/bin/gke-gcloud-auth-plugin ~/.local/bin/gke
 ### GitHub CLI
 
 ```bash
-GH_VERSION=<release number shown at https://github.com/cli/cli/releases/latest, without a leading v>
+# pinned here, not yet in versions.yaml (W1-T02 may add the key); release 2.106.0 dated 2026-11-25, the version reported by `gh --version` on the workstation on 2026-11-27
+GH_VERSION=2.106.0
 curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp
 install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" ~/.local/bin/gh
 gh auth login

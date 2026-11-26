@@ -5,7 +5,7 @@ Date: 2026-11-26
 
 ## Context
 
-Investigations are queued and claimed by two agent workers. A Postgres table with `FOR UPDATE SKIP LOCKED` gives exactly-once claiming with leases and needs no additional service, which matters for the 9.5 GiB budget.
+Investigations are queued and claimed by two agent workers. A Postgres table with `FOR UPDATE SKIP LOCKED` guarantees that one worker holds a job at a time, with leases, and needs no additional service, which matters for the 9.5 GiB budget.
 
 This decision is row 0014 of the ADR index in spec §3. Primary reason recorded there: Avoids Redis and Kafka.
 

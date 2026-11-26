@@ -5,7 +5,7 @@ Date: 2026-11-26
 
 ## Context
 
-The agent authenticates to Keycloak as a client. Storing a client secret in a Kubernetes Secret would conflict with the rule that secrets stay out of Git and minimise static credentials (SEC-101). Keycloak federated client authentication accepts Kubernetes service-account tokens as the client credential.
+The agent authenticates to Keycloak as a client. Storing a client secret in a Kubernetes Secret would add a static client secret, which spec §3 row 0011 rules out (reason recorded there: no static client secrets), and SEC-101 requires that no secret value appears in Git, Helm values files or Terraform variables and state. Keycloak federated client authentication accepts Kubernetes service-account tokens as the client credential.
 
 This decision is row 0011 of the ADR index in spec §3. Primary reason recorded there: No static client secrets.
 

@@ -11,7 +11,7 @@ PG-16 (spec reference GEN-020, GEN-021, MS-001): Parallel implementation in work
 
 The owner instruction of 2026-11-26 sets the model for each role.
 
-The spec does not answer these questions, so spec §0.3 applies: the simplest, cheapest and safest option is chosen. Each question is a row of the spec gap log in spec §26.
+The spec does not answer these questions. The decision rests on: Owner instruction 2026-11-26 (CLAUDE.md). Each question is a row of the spec gap log in spec §26.
 
 ## Decision
 
