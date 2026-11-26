@@ -15,7 +15,7 @@ All constraints in `2026-11-26-rootline-00-overview.md` → "Global Constraints"
 - Nothing in this week calls a paid API.
 - No Rootline service images exist yet, except where a task says so. The umbrella chart `deploy/charts/rootline` is created empty (W1-T10) and gains components in later weeks.
 - Week 1 acceptance (MS-001): `task up` healthy; `task doctor` OK; WKL-004 baseline gate passed; S2 memory ≤ 9.5 GiB measured; `task wiki:lint` passes; `ci.yml` green.
-- Lint-clean code blocks (PG-21, ADR 0040, amended 2026-11-27): these blocks were changed so that the copied file passes `uv run ruff check` with the root `[tool.ruff]` settings: W1-T02 Step 1 (`import subprocess` and `import sys` on two lines) and Step 4 (`sys.path.insert`), W1-T03 Step 1 (no unused `import subprocess`) and Step 3 (`git` through `scripts.proc.run`, `sys.path.insert`), W1-T06 Step 2 (`scripts/proc.py` final text with `# noqa: S603 - …`) and Step 3 (`sys.path.insert`), W1-T07 Step 3 (`health.py`: `except Exception:` with a justification comment instead of `# noqa: BLE001`), W1-T09 Step 4 (`sys.path.insert`), W1-T10 Step 1 and W1-T11 Step 1 (`helm` through `scripts.proc.run`). The only lint suppression allowed in any file is `# noqa: S603 - <justification>` on the line ruff reports (overview Global Constraints "Formatting").
+- Lint-clean code blocks (PG-21, ADR 0040, amended 2026-11-27): these blocks were changed so that the copied file, after `uv run ruff format`, passes `uv run ruff check` with the root `[tool.ruff]` settings and no finding: W1-T02 Step 1 (`import subprocess` and `import sys` on two lines, no `import pytest`, import list `CONSTRAINTS, load_versions, validate, version_of`) and Step 4 (`sys.path.insert`), W1-T03 Step 1 (no unused `import subprocess`; `[*files, "index.md", "status.md"]`) and Step 3 (`git` through `scripts.proc.run`, `sys.path.insert`), W1-T06 Step 2 (`scripts/proc.py` final text with `# noqa: S603 - …`) and Step 3 (`sys.path.insert`; the `repo-location` detail built from a `location` variable so no line exceeds 110 characters), W1-T07 Step 3 (`health.py`: `except Exception:` with a justification comment instead of `# noqa: BLE001`), W1-T09 Step 4 (`sys.path.insert`), W1-T10 Step 1 and W1-T11 Step 1 (`helm` through `scripts.proc.run`). Verified on 2026-11-27 with ruff `0.17.6`: each of these ten blocks, written to its target path next to a copy of the root `pyproject.toml`, gave `All checks passed!` from `ruff check` after `ruff format` (ADR 0040 item 1). The only lint suppression allowed in any file is `# noqa: S603 - <justification>` on the line ruff reports (overview Global Constraints "Formatting").
 
 
 ## Execution schedule
@@ -431,7 +431,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Requirement IDs:** PG-16 (overview §7), PG-18, PG-19, PG-20, PG-21, GEN-001, GEN-022, CI-001, GEN-041, WIK-020, TST-002, TST-010.
 **Depends on:** W1-T01. Runs in stage W1-S2, before every parallel stage (schedule `W1-S2`). **Branch:** `feat/w1-swarm-tooling`.
 
-> **Amended 2026-11-27 after the W1-T16 review, per PG-21 (overview §5; ADR 0040).** The "Files", "Interfaces", Step 1 test descriptions, Steps 2, 3, 4, 5 and 8 and the dev-group paragraph after Step 9 now state: the `# noqa: S603 - <justification>` rule and the `S607`/`BLE001` rules (ADR 0040 item 1), the required `namespace` of `exec` smoke checks (item 2), the `next` output strings and exit codes (item 3), the wave-table comparison in `validate` (item 4), `--no-renames -z` and exit code 2 in `check_ownership.py` (item 5), root anchoring in `matches` (item 6), the `--stage` mode used by G1 on integration branches (item 7), and the gate's check names, `env --chdir` runner, 3600 s timeout, `setup uv-sync` result and G10 `results` comparison (item 8).
+> **Amended 2026-11-27 after the W1-T16 review, per PG-21 (overview §5; ADR 0040).** The "Files", "Interfaces", Step 1 test descriptions, Steps 2, 3, 4, 5 and 8 and the dev-group paragraph after Step 9 now state: the `# noqa: S603 - <justification>` rule and the `S607`/`BLE001` rules (ADR 0040 item 1), the required `namespace` of `exec` smoke checks (item 2), the `next` output strings and exit codes (item 3), the wave-table comparison in `validate` (item 4), `--no-renames -z` and exit code 2 in `check_ownership.py` (item 5), root anchoring in `matches` (item 6), the `--stage` mode used by G1 on integration branches (item 7), and the gate's check names, `env --chdir` runner, 3600 s timeout, `setup worktree` and `setup uv-sync` results, exit code 2 for an unknown stage or an unresolvable ref, and G10 `results` comparison (item 8). The fix branch `fix/w1-t16-adr-0040` must be merged into develop before stage W1-P1 is dispatched, because the merged `scripts/proc.py` line 21 has a bare `# noqa: S603` that the W1-T06 Step 2 check rejects.
 
 **Files:**
 - Modify (Step 0, its own commit): `tests/repo/test_layout.py` (replace with the W1-T01 Step 1 block), `pyproject.toml` (add `extend-exclude = ["*.md"]` to `[tool.ruff]`)
@@ -470,7 +470,9 @@ W1-T16 is in a sequential stage, so the schedule gives it no `owns` list and `sc
 | G1 | parallel stage: `uv run python scripts/check_ownership.py --stage <stage id> --base <base sha> --branch <head sha>` in the coordinator's repository; `pass` on exit 0, `fail` with reason `exit <code>` on exit 1 or 2. Sequential stage: `skip`, reason `stage <id> is sequential` |
 | Command runner | the default runner runs `["env", "--chdir", "<worktree>", *cmd]` through `scripts.proc.run(…, check=False, timeout=3600)`, because `proc.run` has no `cwd` |
 | Timeout | 3600 s per command; on `subprocess.TimeoutExpired` the runner returns exit `124` with stderr `timeout after 3600 s: <command joined by spaces>`, and the check is `fail`, reason `exit 124` |
-| Setup | after `git worktree add --detach` of `.swarm/worktrees/<stage>` (head) and `.swarm/worktrees/<stage>-base` (base), the gate runs `uv sync --all-packages --frozen` in the head worktree. Non-zero exit → `checks` = `[{name: "setup uv-sync", status: "fail", reason: "exit <code>", duration_s: 0.0, output_tail: <last 40 lines>}]`, no G-check runs, both worktrees are removed, the report is written, exit 1 (0 with `--report-only`). A failing `git worktree add` also exits 1 |
+| Setup | after `git worktree add --detach` of `.swarm/worktrees/<stage>` (head) and `.swarm/worktrees/<stage>-base` (base), the gate runs `uv sync --all-packages --frozen` in the head worktree. Non-zero exit → `checks` = `[{name: "setup uv-sync", status: "fail", reason: "exit <code>", duration_s: 0.0, output_tail: <last 40 lines>}]`, no G-check runs, both worktrees are removed, the report is written, exit 1 (0 with `--report-only`) |
+| Setup worktree | `git worktree add --detach <path> <sha>` runs for the head worktree, then the base worktree. Non-zero exit of either → `checks` = `[{name: "setup worktree", status: "fail", reason: "git worktree add <path> failed: <git stderr>", duration_s: 0.0, output_tail: ""}]`, `uv sync` and the G-checks do not run, any worktree already created is removed, the report is written, exit 1 (0 with `--report-only`) |
+| Exit 2 | unknown stage (stderr `unknown stage: <id>`) or a `--base`/`--branch` ref that `git rev-parse --verify <ref>^{commit}` cannot resolve (stderr `cannot resolve base <ref>` / `cannot resolve branch <ref>`): exit 2 before any worktree is created and without writing a report; `--report-only` does not change it |
 | G10 | `uv run rootline-eval baseline --split smoke --write-regression <temporary file>` in the head worktree; compares only the parsed value of the top-level key `results` of the temporary file with that of the committed `eval/baselines/baseline-smoke.json` (`git_sha` and other keys are ignored). Equal → `pass`; different → `fail` unless the PR body has `baseline-change: <reason>` and the committed file differs from the base's file |
 
 - CLI `uv run python scripts/cluster_smoke.py [--context k3d-rootline] [--timeout 1200]` → G12. `exec` checks require `namespace` (ADR 0040 item 2).
@@ -581,7 +583,7 @@ Run: `uv run pytest tests/repo/test_swarm_schedule.py tests/repo/test_check_owne
 
 - [ ] **Step 3: Implement `scripts/check_ownership.py`** — changed files = `git diff --name-only --diff-filter=ACMRD --no-renames -z <base>...<branch>` split on NUL (renames are checked as delete plus add, ADR 0040 item 5); `--task <id>`: for a task that is sequential (no `owns`), exit 0; otherwise apply `owns` − `excludes` ∪ `always_allowed` with the pyproject/package.json and `__init__.py` special rules of overview §7.4; `--stage <id>`: a path passes when it is owned (`owns` − `excludes`) by at least one task of the stage or is always-allowed under the same special rules (ADR 0040 item 7). Exit codes 0, 1 and 2 and the output lines exactly as in "Interfaces".
 
-- [ ] **Step 4: Implement `scripts/integration_gate.py`** — each check is a function `(ctx) -> CheckResult(name, status, reason, duration_s, output_tail)` (last 40 lines of output) with the check names of the "Interfaces" table; commands exactly as overview §7.7, run through `scripts.proc.run` with `check=False` inside `env --chdir <worktree>` with timeout 3600 s; applicability conditions evaluated from files on the branch checkout (the gate checks out `--branch` in a temporary worktree under `.swarm/worktrees/<stage>` with `git worktree add --detach`, runs `uv sync --all-packages --frozen` there (`setup uv-sync` on failure), runs the checks there, and removes the worktree afterwards, so the coordinator's working tree is never modified). G1 calls `check_ownership.py --stage`. G9 collects counts on the base in a second temporary worktree `.swarm/worktrees/<stage>-base`. G10 compares only the `results` key. PR-body exemptions read from `--pr-body <file>`. The `except Exception as error:` that turns a crashing check into `fail` carries a same-line justification comment, not `# noqa: BLE001` (ADR 0040 item 1).
+- [ ] **Step 4: Implement `scripts/integration_gate.py`** — each check is a function `(ctx) -> CheckResult(name, status, reason, duration_s, output_tail)` (last 40 lines of output) with the check names of the "Interfaces" table; commands exactly as overview §7.7, run through `scripts.proc.run` with `check=False` inside `env --chdir <worktree>` with timeout 3600 s; applicability conditions evaluated from files on the branch checkout (the gate checks out `--branch` in a temporary worktree under `.swarm/worktrees/<stage>` with `git worktree add --detach` (`setup worktree` on failure), runs `uv sync --all-packages --frozen` there (`setup uv-sync` on failure), runs the checks there, and removes the worktree afterwards, so the coordinator's working tree is never modified). G1 calls `check_ownership.py --stage`. G9 collects counts on the base in a second temporary worktree `.swarm/worktrees/<stage>-base`. G10 compares only the `results` key. PR-body exemptions read from `--pr-body <file>`. The `except Exception as error:` that turns a crashing check into `fail` carries a same-line justification comment, not `# noqa: BLE001` (ADR 0040 item 1).
 
 - [ ] **Step 5: Implement `scripts/cluster_smoke.py`** — waits for every ArgoCD Application in `argocd` to be `Synced/Healthy` (poll 15 s, `--timeout` default 1200 s), runs `scripts/doctor.py`'s memory check (≤ 9.5 GiB, imported lazily because `doctor.py` is created by W1-T06; before W1-T06 is merged the memory check is reported `skip`), then every check in `tests/smoke/*.yaml` (`http` checks never follow redirects, so `expect_status` may be a 3xx code; `exec` checks run in their required `namespace`); prints one line per check `PASS|FAIL <component>/<name>: <detail>`; exit 1 on any FAIL. The `subprocess.Popen` of the port-forward carries `# noqa: S603 - <justification>` on the line ruff reports (ADR 0040 item 1).
 
@@ -660,9 +662,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 import re
 from pathlib import Path
 
-import pytest
-
-from scripts.versions_lib import CONSTRAINTS, load_versions, version_of, validate
+from scripts.versions_lib import CONSTRAINTS, load_versions, validate, version_of
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -922,11 +922,11 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: every file in the WIK-002 tree except `wiki/adr/0001…` (W1-T04), `wiki/adr/0037…0040` (already on `develop`, PG-18 … PG-21; do not edit) and `wiki/versions.md` (W1-T02)
-
-`scripts/wiki_lint.py` runs `git` through `scripts.proc.run` (created by W1-T16) and the test imports no `subprocess`, so both files pass `uv run ruff check` without any `noqa` (PG-21, ADR 0040 items 1 and 9).
 - Create: `wiki/components/<slug>.md` for each slug in `COMPONENT_PAGES` below
 - Create: `scripts/wiki_lint.py`
 - Test: `tests/repo/test_wiki_lint.py`
+
+`scripts/wiki_lint.py` runs `git` through `scripts.proc.run` (created by W1-T16) and the test imports no `subprocess`, so both files pass `uv run ruff check` (after `uv run ruff format`) with no finding and without any `noqa` (PG-21, ADR 0040 items 1 and 9).
 
 **Interfaces:**
 - Produces: `uv run python scripts/wiki_lint.py [--changed-files <file>] [--pr-body <file>]` exit 0/1, one line per problem `wiki-lint: <rule>: <detail>`; constant `COMPONENT_PAGES`.
@@ -955,7 +955,7 @@ def make_wiki(root: Path) -> Path:
     for slug in wl.COMPONENT_PAGES:
         (w / "components" / f"{slug}.md").write_text("# C\n", encoding="utf-8")
     files = sorted(p.relative_to(w).as_posix() for p in w.rglob("*.md"))
-    index = "# Index\n" + "".join(f"- [{f}]({f})\n" for f in files + ["index.md", "status.md"])
+    index = "# Index\n" + "".join(f"- [{f}]({f})\n" for f in [*files, "index.md", "status.md"])
     (w / "index.md").write_text(index, encoding="utf-8")
     (w / "status.md").write_text(f"# Status\nLast updated: {date.today():%Y-%m-%d} (commit abc1234)\n",
                                  encoding="utf-8")
@@ -1653,8 +1653,10 @@ def wsl_checks(proc_version: str, repo: Path, env: dict[str, str]) -> list[Check
     out = [Check("wsl", "OK" if "microsoft" in proc_version.lower() and env.get("WSL_DISTRO_NAME") else "FAIL",
                  env.get("WSL_DISTRO_NAME", "not running inside WSL"))]
     on_windows_fs = str(repo).startswith("/mnt/")
-    out.append(Check("repo-location", "FAIL" if on_windows_fs else "OK",
-                     f"{repo} ({'Windows filesystem: move to /home/arkhash0309/projects' if on_windows_fs else 'WSL filesystem'})"))
+    location = "WSL filesystem"
+    if on_windows_fs:
+        location = "Windows filesystem: move to /home/arkhash0309/projects"
+    out.append(Check("repo-location", "FAIL" if on_windows_fs else "OK", f"{repo} ({location})"))
     cpus = os.cpu_count() or 0
     out.append(Check("wsl-cpus", "OK" if cpus >= 16 else "WARN", f"{cpus} (.wslconfig processors=16)"))
     return out
