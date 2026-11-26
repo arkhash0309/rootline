@@ -347,28 +347,29 @@ rootline-env/
 
 `wiki/runbooks/workstation-setup.md` MUST document installing exactly the following **inside WSL Ubuntu** (except where the Where column says Windows), with the exact install commands:
 
-| Tool | Where | Requirement and install method |
+| Tool | Where | Requirement and install method (as installed on 2026-11-26) |
 |---|---|---|
-| WSL 2 + Ubuntu 26.04 LTS | Windows | distribution `Ubuntu`, systemd on, `.wslconfig` above |
-| Docker Engine | WSL | native `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` from Docker's apt repository; systemd service `docker` enabled; user in group `docker`. Docker Desktop is **not** used |
-| k3d | WSL | version line from `versions.yaml`, official install script with `TAG=v<version>` |
-| kubectl | WSL | `pkgs.k8s.io` apt repository, matching the cluster minor ±1 |
-| Helm | WSL | 3.x line from `versions.yaml`, official release tarball into `/usr/local/bin` |
-| go-task | WSL | `task` CLI, official install script into `~/.local/bin` |
-| uv | WSL | official installer; manages Python 3.12 (the system Python is not used) |
-| Node.js | WSL | 24 LTS with npm, installed with `fnm` |
-| Playwright browsers | WSL | `npx playwright install --with-deps chromium` (headless e2e and accessibility tests) |
-| Terraform | WSL | HashiCorp apt repository, line from `versions.yaml` |
-| gcloud CLI | WSL | Google Cloud apt repository, with `google-cloud-cli-gke-gcloud-auth-plugin` |
-| GitHub CLI `gh` | WSL | GitHub apt repository, authenticated as `arkhash0309` |
-| Ollama | WSL | Linux installer (systemd service `ollama`, CPU-only), not in the cluster (§9.5.4) |
-| OPA CLI | WSL | static binary from GitHub releases into `~/.local/bin`, for `opa test` |
+| WSL 2 + Ubuntu 26.04 LTS | Windows | distribution `Ubuntu`, `.wslconfig` above; `/etc/wsl.conf` contains `[boot] systemd=true`, `[user] default=arkhash0309`, `[interop] appendWindowsPath=false` (Windows programs are not on the WSL `PATH`; call them by absolute path) |
+| Docker Engine | WSL | Ubuntu packages `docker.io`, `containerd`, `docker-buildx`, `docker-compose-v2` (apt); systemd service `docker` enabled; user in group `docker`. Docker Desktop is **not** used |
+| k3d | WSL | release binary `k3d-linux-amd64` from GitHub into `~/.local/bin`, version line from `versions.yaml` |
+| kubectl | WSL | release binary from `dl.k8s.io` into `~/.local/bin`, matching the cluster minor ±1 (re-pinned in W1-T02 once the `k3s` minor is resolved) |
+| Helm | WSL | 3.x release tarball from `get.helm.sh` into `~/.local/bin` |
+| go-task | WSL | 3.x release tarball from GitHub into `~/.local/bin` |
+| uv | WSL | official installer into `~/.local/bin`; `uv python install 3.12` (the system Python 3.14 is not used) |
+| Node.js | WSL | 24 LTS with npm via `fnm` (binary in `~/.local/share/fnm`) |
+| Playwright browsers | WSL | `npx playwright install --with-deps chromium` (installed in week 6 for e2e and accessibility tests) |
+| Terraform | WSL | release zip from `releases.hashicorp.com` into `~/.local/bin`, line from `versions.yaml` |
+| gcloud CLI | WSL | Google Cloud CLI tarball in `~/.local/opt/google-cloud-sdk` (symlinked into `~/.local/bin`) with component `gke-gcloud-auth-plugin` |
+| GitHub CLI `gh` | WSL | release tarball into `~/.local/bin`; authenticated as `arkhash0309`; `gh auth setup-git` is the git credential helper |
+| Ollama | WSL | Linux installer (systemd service `ollama`, CPU-only), service disabled by default and started only for pilots; not in the cluster (§9.5.4) |
+| OPA CLI | WSL | static release binary into `~/.local/bin`, for `opa test` |
 | Git | WSL | ≥ 2.45 (apt) |
-| Support packages | WSL | `build-essential`, `jq`, `zstd`, `libnss3-tools` (NSS `certutil`), `wslu` (`wslview` opens URLs in the Windows browser), `ca-certificates` |
-| Claude Code | WSL | installed inside WSL; every coordinator and agent session starts in `/home/arkhash0309/projects/rootline` |
+| Support packages | WSL | `unzip`, `jq`, `zstd`, `libnss3-tools` (NSS `certutil`), `wslu` (`wslview` opens URLs in the Windows browser), `build-essential`, `ca-certificates` (apt) |
+| Claude Code | WSL | native Linux build into `~/.local/bin`; every coordinator and agent session starts in `/home/arkhash0309/projects/rootline`. The Windows copy is never used from WSL |
+| Shell setup | WSL | `~/.profile` and `~/.bashrc` put `~/.local/bin` and `fnm` first on `PATH`, so non-interactive agent shells see the same tools |
 | Web browser | Windows | Edge or Chrome with Windows Hello for passkeys |
 
-`GEN-041`: All automation MUST run inside the WSL Ubuntu distribution on the owner workstation and in bash on Linux CI, without modification. Windows-native shells (PowerShell, cmd, Git Bash) MUST NOT be used to run project commands. Every `Taskfile.yml` task MUST use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed. The only Windows programs automation may call are `certutil.exe` (via WSL interop, `task trust-ca`) and the browser (via `wslview`).
+`GEN-041`: All automation MUST run inside the WSL Ubuntu distribution on the owner workstation and in bash on Linux CI, without modification. Windows-native shells (PowerShell, cmd, Git Bash) MUST NOT be used to run project commands. Every `Taskfile.yml` task MUST use only `task` built-ins, `uv run python scripts/<name>.py`, or invocations of the tools above. Shell-specific syntax is not allowed. The only Windows programs automation may call are `/mnt/c/Windows/System32/certutil.exe` (absolute path, because `appendWindowsPath=false`; `task trust-ca`) and the browser (via `wslview`).
 
 ### 4.6 Version pinning
 
@@ -429,7 +430,7 @@ rootline-env/
 | `task stop` / `task start` | `k3d cluster stop` / `k3d cluster start` (frees RAM for Ollama runs) |
 | `task images` | Builds all service images with tag `dev` and imports them into k3d |
 | `task secrets:local` | Creates the Kubernetes Secret `rootline-bootstrap` in namespace `rootline-secrets` from `.env.local` (§10.11) |
-| `task trust-ca` | Exports the local CA certificate to `data/rootline-ca.crt` and installs it into (1) the WSL system trust store (`/usr/local/share/ca-certificates/rootline-ca.crt` + `sudo update-ca-certificates`), (2) the NSS database `~/.pki/nssdb` used by Chromium/Playwright in WSL (`certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n rootline-local-ca`), and (3) the Windows user Root store via WSL interop (`certutil.exe -user -addstore Root <wslpath -w path>`, which shows the Windows confirmation dialog) |
+| `task trust-ca` | Exports the local CA certificate to `data/rootline-ca.crt` and installs it into (1) the WSL system trust store (`/usr/local/share/ca-certificates/rootline-ca.crt` + `sudo update-ca-certificates`), (2) the NSS database `~/.pki/nssdb` used by Chromium/Playwright in WSL (`certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n rootline-local-ca`), and (3) the Windows user Root store via WSL interop (`/mnt/c/Windows/System32/certutil.exe -user -addstore Root <wslpath -w path>`, which shows the Windows confirmation dialog) |
 | `task test` | Runs all unit tests (Python + console + `opa test`) |
 | `task lint` | ruff, mypy, eslint, tsc, `helm lint`, kubeconform, `terraform fmt -check`, tflint |
 | `task eval:smoke` | Runs the smoke set (§15.10) with config `all-small` |
