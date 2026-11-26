@@ -5,7 +5,7 @@
 | Document ID | `SPEC-ROOTLINE-001` |
 | Version | 2.0 (detailed) |
 | Date | 2026-11-25 |
-| Status | Draft for owner review. Not yet approved for planning |
+| Status | Approved by the owner on 2026-11-26. Implementation plans: `docs/superpowers/plans/2026-11-26-rootline-*.md` |
 | Owner | Repository owner (`arkhash0309`) |
 | Implementers | AI coding agents, directed and reviewed by the owner |
 | Repositories | `arkhash0309/rootline` (private, this repo), `arkhash0309/rootline-env` (private, created in week 1, see §4.2) |
@@ -3713,7 +3713,21 @@ Implementers append rows here per §0.3.
 
 | Date | Question | Decision | ADR | PR |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| 2026-11-26 | PG-1 (AGT-052): `messages.parse` is unavailable for Message Batches, so interactive and batch calls would send different schemas. | Both backends send `output_config.format` json_schema from `rootline_llm.schema.output_schema()` via `messages.create`; Pydantic re-validates. | 0026 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-2 (AGT-052): server-side `fallbacks` is rejected by the Batches API. | Batch requests omit fallbacks; a batch refusal is retried once, then `LLMRefusal`. | 0027 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-3 (SEC-080, §22): git captures start in week 2 but the GitHub Apps are scheduled for week 3. | `rootline-faultlab` App is created in week 2. | 0028 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-4 (INF-023, MCP-060, MCP-020–022, AGT-083, LAB-046): week-2 Fault Lab work needs pieces scheduled later. | Build argocd-accounts, redaction, algorithms and the detector in week 2; LAB-046 in week 3. | 0028 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-5 (MCP-053): week-2 snapshots cannot contain parity outputs. | `SnapshotManifest.parity: bool`; TST-MCP-010 runs on snapshots with `parity: true`. | 0029 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-6 (LAB-050, POL-021): `ActionSpec` cannot express acceptable-action constraints. | New `AcceptableAction {type, sha?, workload?, container?, constraints}` model. | 0030 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-7 (EVL-080, CI-010): the CI smoke gate needs GCS, which exists only from week 7. | `eval-smoke.yml` is skipped with a notice until `GCP_WIF_PROVIDER` is set; owner runs `task eval:smoke` locally meanwhile. | 0028 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-8 (GEN-001): SEC-053 and TST-070 imply a root `tests/` directory. | Root `tests/` allowed for repo-level tests, fixtures and e2e only. | 0031 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-9 (SEC-100, SEC-082): ArgoCD needs repo credentials before ESO exists. | Repo Secrets created directly by `task secrets:local` / `task gke:up`. | 0032 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-10 (DB-002): CNPG managed roles do not generate passwords. | ESO Password generators plus a `pg-roles` ClusterSecretStore. | 0032 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-11 (WKL-010 step 6): chart 0.42.8 copies flagd config into an emptyDir at init, so live drift never reaches flagd. | Mount the ConfigMap directly; measured fallback deletes the flagd pod. | 0033 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-12 (WKL-010 step 5): forcing every OTLP endpoint to :4317 breaks HTTP exporters. | Set `OTEL_COLLECTOR_NAME` to the collector FQDN and keep each endpoint's port. | 0033 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-13 (SEC-100): host and in-cluster Anthropic keys need different names. | `ANTHROPIC_API_KEY` = cluster key; `ROOTLINE_HOST_ANTHROPIC_API_KEY` = host key; CI uses `ANTHROPIC_API_KEY_CI`. | 0032 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-14 (EVL-062): batch `custom_id` must match `^[a-zA-Z0-9_-]{1,64}$`. | `custom_id = "c" + sha256("<run_id>:<scenario_id>:<seq>")[:48]` with a persisted mapping file. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
+| 2026-11-26 | PG-15 (AGT-063): one system-block breakpoint does not cache the growing conversation. | Also send top-level automatic `cache_control`; measured by the week-4 cache check. | 0034 (written in W1-T04; details in plan overview §5) | planning commit |
 
 ---
 
