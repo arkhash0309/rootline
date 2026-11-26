@@ -1,0 +1,59 @@
+[project]
+name = "rootline-workspace"
+version = "0.1.0"
+description = "Rootline uv workspace root (not published)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "rootline-common", "rootline-mcpkit", "rootline-llm", "rootline-schemas",
+  "rootline-api", "rootline-agent", "rootline-gate", "rootline-faultlab",
+  "rootline-mcp-k8s", "rootline-mcp-telemetry", "rootline-mcp-gitops", "rootline-eval",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["libs/*", "services/*", "eval/runner"]
+
+[tool.uv.sources]
+rootline-common = { workspace = true }
+rootline-mcpkit = { workspace = true }
+rootline-llm = { workspace = true }
+rootline-schemas = { workspace = true }
+rootline-api = { workspace = true }
+rootline-agent = { workspace = true }
+rootline-gate = { workspace = true }
+rootline-faultlab = { workspace = true }
+rootline-mcp-k8s = { workspace = true }
+rootline-mcp-telemetry = { workspace = true }
+rootline-mcp-gitops = { workspace = true }
+rootline-eval = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<9", "pytest-asyncio>=1,<2", "pytest-cov>=6,<8", "hypothesis>=6,<7",
+  "respx>=0.22,<1", "ruff>=0.14,<1", "mypy>=1.18,<2", "testcontainers[postgres]>=4,<5",
+  "pyyaml>=6,<7", "types-pyyaml",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: needs Docker (testcontainers)",
+  "k8s: needs a kind or k3d cluster (task test:k8s)",
+  "integration_contract: cross-task contract test; deselected inside parallel worktrees, run by the integration gate (overview §7.7 G6)",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "ASYNC", "RUF"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]

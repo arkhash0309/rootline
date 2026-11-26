@@ -5,6 +5,35 @@ Instructions for every AI coding agent working in this repository. These rules o
 Project: **Rootline**, an AI SRE agent that diagnoses incidents in its own Kubernetes cluster.
 Source of truth: [docs/superpowers/specs/2026-11-25-rootline-design.md](docs/superpowers/specs/2026-11-25-rootline-design.md) (SPEC-ROOTLINE-001).
 
+## Project summary
+
+Rootline is an AI SRE agent that diagnoses incidents in its own Kubernetes cluster. A Fault Lab injects
+labelled faults into a trimmed OpenTelemetry Demo shop and captures replayable snapshots; a LangGraph
+planner/executor agent investigates through three OAuth-protected MCP servers; a policy gate (OPA)
+decides whether the agent's GitOps fix merges automatically, needs a passkey-backed approval, or is
+denied; an offline eval runner turns the snapshots into a benchmark.
+
+## Before any task
+
+Before any task, load the `rootline-wiki` skill (or read `.claude/skills/rootline-wiki/SKILL.md`) and follow it.
+
+- Spec: [docs/superpowers/specs/2026-11-25-rootline-design.md](docs/superpowers/specs/2026-11-25-rootline-design.md)
+- Plans: [docs/superpowers/plans/](docs/superpowers/plans/) (start with `2026-11-26-rootline-00-overview.md`)
+- Wiki: [wiki/index.md](wiki/index.md)
+
+## Branch rules (spec §4.3)
+
+- `main`: releases only, via the release PR `develop → main` titled `release: milestone <N>` (merge commit).
+- `develop`: integration branch; changes arrive by squash-merged PRs.
+- Work branches from `develop`: `feat/<slug>`, `fix/<slug>`, `docs/<slug>`. Urgent release fixes: `hotfix/<slug>` from `main`, merged into `main` and `develop`.
+- Never force-push `main` or `develop`. Never push directly to `main`.
+
+## Commit rules (GEN-022)
+
+- Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, `build:`, `perf:`, with optional scope = component directory name, e.g. `feat(agent): add verify node`.
+- Commits authored by AI agents end with the attribution trailer in use in the session, currently:
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+
 ## Development environment (owner instruction, 2026-11-26 — mandatory)
 
 All development happens inside **WSL 2**, distribution `Ubuntu` (Ubuntu 26.04 LTS, systemd on), because it uses the CPU cores better (spec GEN-040, GEN-041, plan decision PG-17).

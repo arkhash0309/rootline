@@ -44,3 +44,8 @@ snapshots/
 Thumbs.db
 .idea/
 .vscode/
+
+# Rootline additions (W1-T01)
+eval/runs/
+infra/terraform/**/backend_override.tf
+infra/terraform/**/terraform.tfvars
