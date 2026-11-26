@@ -1,6 +1,7 @@
 # Rootline execution schedule (overview §7). Single source of truth for stage order.
 # Each wave file's "Execution schedule" table mirrors this file; scripts/swarm_schedule.py validate checks both.
-# Glob syntax: gitignore-style, relative to the repository root; ** matches across directories.
+# Glob syntax: gitignore-style, relative to the repository root; ** matches across directories;
+# a pattern without "/" is anchored at the repository root (overview §7.2, ADR 0040 item 6).
 version: 1
 max_parallel_implementers: 3
 always_allowed:            # overview §7.4
