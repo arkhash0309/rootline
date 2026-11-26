@@ -225,12 +225,14 @@ def stage_offenders(tmp_path: Path, root: Path, base: str, stage: str = "W9-P1")
 def test_stage_mode_passes_a_path_owned_by_any_task_of_the_stage(
     tmp_path: Path, repo: tuple[Path, str]
 ) -> None:
+    """ADR 0040 item 7, PG-21: a path owned by any task of the stage passes."""
     root, base = repo
     commit_change(root, {"svc/a/x.py": "x = 2\n", "svc/b/q.py": "q = 1\n", "wiki/log.md": "# Log\n- x\n"})
     assert stage_offenders(tmp_path, root, base) == []
 
 
 def test_stage_mode_reports_a_path_owned_by_no_task(tmp_path: Path, repo: tuple[Path, str]) -> None:
+    """ADR 0040 item 7, PG-21: a path owned by no task, or excluded, is reported with the stage id."""
     root, base = repo
     commit_change(root, {"svc/b/q.py": "q = 1\n", "svc/c/z.py": "z = 1\n", "svc/a/locked/y.py": "y = 2\n"})
     assert stage_offenders(tmp_path, root, base) == [
@@ -240,6 +242,7 @@ def test_stage_mode_reports_a_path_owned_by_no_task(tmp_path: Path, repo: tuple[
 
 
 def test_stage_mode_sequential_stage_passes_every_path(tmp_path: Path, repo: tuple[Path, str]) -> None:
+    """ADR 0040 item 7, PG-21: a sequential stage passes every path."""
     root, base = repo
     commit_change(root, {"anything/at/all.txt": "x\n"})
     assert stage_offenders(tmp_path, root, base, stage="W9-S1") == []
@@ -251,6 +254,7 @@ def test_stage_mode_cli_exit_codes(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """ADR 0040 item 7, PG-21: `--stage` exits 1 on an offender and 2 for an unknown stage or ref."""
     root, base = repo
     schedule_file = tmp_path / "schedule.yaml"
     schedule_file.write_text(SCHEDULE, encoding="utf-8")
