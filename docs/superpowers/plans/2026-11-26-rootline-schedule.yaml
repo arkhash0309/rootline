@@ -37,14 +37,14 @@ weeks:
         tasks:
           - id: W1-T02
             branch: feat/w1-versions
-            owns: [versions.yaml, scripts/versions_lib.py, scripts/check_versions.py, scripts/render_versions.py, tests/repo/test_versions.py]
+            owns: [versions.yaml, scripts/versions_lib.py, scripts/check_versions.py, scripts/render_versions.py, tests/repo/test_versions.py, wiki/versions.md]
             deferred_steps: [8]
             deferred_to: W1-S3
           - id: W1-T03
             combined_with: [W1-T04]
             branch: feat/w1-wiki
             owns: [wiki/**, scripts/wiki_lint.py, tests/repo/test_wiki_lint.py, docs/superpowers/specs/2026-11-25-rootline-design.md]
-            excludes: [wiki/runbooks/local-up.md]
+            excludes: [wiki/runbooks/local-up.md, wiki/versions.md]
       - id: W1-P2
         mode: parallel
         after: [W1-P1]
