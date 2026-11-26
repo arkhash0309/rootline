@@ -2,7 +2,9 @@
 
 import http.server
 import json
+import os
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -122,6 +124,13 @@ def test_invalid_smoke_file_is_rejected_by_the_schema(tmp_path: Path, text: str)
 def test_file_name_must_equal_the_component(tmp_path: Path) -> None:
     directory = write_smoke(tmp_path, "other.yaml", SMOKE_API)
     with pytest.raises(cs.SmokeError, match=r"other\.yaml: file name must be api\.yaml"):
+        cs.load_smoke_files(directory)
+
+
+def test_duplicate_check_names_in_one_file_are_rejected(tmp_path: Path) -> None:
+    text = smoke_text("api", [HTTP_OK, {**EXEC_OK, "name": HTTP_OK["name"]}])
+    directory = write_smoke(tmp_path, "api.yaml", text)
+    with pytest.raises(cs.SmokeError, match=r"api\.yaml: duplicate check name: " + str(HTTP_OK["name"])):
         cs.load_smoke_files(directory)
 
 
@@ -289,6 +298,81 @@ def test_wait_for_argocd_fails_after_the_timeout_and_names_the_apps() -> None:
 def test_wait_for_argocd_fails_when_no_application_exists() -> None:
     outcome = cs.wait_for_argocd(FakeBackend({"applications.argoproj.io": apps()}), "c", timeout_s=30)
     assert outcome.line() == "FAIL argocd/apps: not Synced/Healthy after 30 s: no Application found"
+
+
+def test_wait_for_argocd_treats_non_json_output_as_a_pending_poll() -> None:
+    class Garbled(FakeBackend):
+        def run(self, cmd: list[str], timeout: int = 120) -> CmdResult:
+            super().run(cmd, timeout)
+            if len(self.commands) < 3:
+                return CmdResult(0, "error: <html>proxy</html>")
+            return apps(("root", "Synced", "Healthy"))
+
+    backend = Garbled()
+    assert cs.wait_for_argocd(backend, "c", timeout_s=1200).line() == (
+        "PASS argocd/apps: 1 applications Synced/Healthy"
+    )
+    assert backend.sleeps == [15, 15]
+    always = FakeBackend({"applications.argoproj.io": CmdResult(0, "not json")})
+    outcome = cs.wait_for_argocd(always, "c", timeout_s=30)
+    assert outcome.status == "FAIL"
+    assert "kubectl output is not a JSON object" in outcome.detail
+
+
+class SilentProcess:
+    """A `kubectl port-forward` stand-in whose stdout is an open pipe that never receives a byte."""
+
+    def __init__(self, text: str = "") -> None:
+        read_fd, self.write_fd = os.pipe()
+        self.stdout = os.fdopen(read_fd, "r")
+        if text:
+            os.write(self.write_fd, text.encode())
+        self.terminated = False
+
+    def poll(self) -> None:
+        return None
+
+    def terminate(self) -> None:
+        self.terminated = True
+        os.close(self.write_fd)
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+    def kill(self) -> None:
+        self.terminate()
+
+
+HTTP_CHECK = {"name": "readyz", "kind": "http", "namespace": "n", "service": "s", "port": 80, "path": "/"}
+
+
+def test_port_forward_that_prints_nothing_times_out_and_fails_the_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PG-16: the 30 s readiness deadline holds even when kubectl prints nothing (shortened to 0.3 s)."""
+    process = SilentProcess()
+    monkeypatch.setattr(cs.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(cs, "PORT_FORWARD_READY_TIMEOUT_S", 0.3)
+    started = time.monotonic()
+    outcome = cs.run_check("api", {**HTTP_CHECK, "expect_status": 200}, cs.RealBackend(), "c")
+    assert time.monotonic() - started < 5
+    assert outcome.status == "FAIL"
+    assert outcome.detail.startswith("request failed: port-forward not ready after 0 s")
+    assert process.terminated
+
+
+def test_wait_for_forwarding_returns_true_on_the_forwarding_line() -> None:
+    process = SilentProcess("Handling x\nForwarding from 127.0.0.1:45678 -> 80\n")
+    try:
+        assert cs.wait_for_forwarding(process.stdout, 5.0) is True
+    finally:
+        process.terminate()
+
+
+def test_wait_for_forwarding_returns_false_when_the_process_exits() -> None:
+    process = SilentProcess("error: unable to listen\n")
+    process.terminate()
+    assert cs.wait_for_forwarding(process.stdout, 5.0) is False
 
 
 def pods_json(*memory: str) -> CmdResult:

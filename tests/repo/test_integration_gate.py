@@ -1,6 +1,7 @@
 """Verifies PG-16 (overview §7.7 gate checks G1 to G11, report shape and exit codes), TST-002, TST-010."""
 
 import json
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 
 from scripts import integration_gate as gate
 from scripts.integration_gate import CmdResult
-from scripts.swarm_lib import load_schedule
+from scripts.swarm_lib import Schedule, Stage, TaskEntry, Week, load_schedule
 
 REPO = Path(__file__).resolve().parents[2]
 Rule = Callable[[list[str], Path], CmdResult | None]
@@ -34,6 +35,8 @@ class FakeRunner:
             result = rule(command, cwd)
             if result is not None:
                 return result
+        if command[:2] == ["git", "diff"]:
+            return CmdResult(0, "")
         if "alembic" in command:
             return CmdResult(0, "0001_a (head)\n")
         if "--collect-only" in command:
@@ -163,15 +166,116 @@ def test_sequential_stage_skips_ownership(dirs: tuple[Path, Path]) -> None:
     assert (result.status, result.reason) == ("skip", "stage W1-S1 is sequential")
 
 
-def test_ownership_runs_once_per_task_of_a_parallel_stage(dirs: tuple[Path, Path]) -> None:
-    full_tree(dirs[0])
-    runner = FakeRunner()
-    run_gate("W1-P1", dirs, runner)
-    ownership = [c for c, _ in runner.calls if "scripts/check_ownership.py" in c]
-    assert [c[c.index("--task") + 1] for c in ownership] == ["W1-T02", "W1-T03"]
-    assert all(
-        c[c.index("--base") + 1] == "b" * 40 and c[c.index("--branch") + 1] == "h" * 40 for c in ownership
+def git_repo(root: Path, files: dict[str, str]) -> tuple[Path, str, str]:
+    """A real git repo with one base commit and one integration commit adding `files`; (repo, base, head)."""
+    root.mkdir(parents=True)
+
+    def git(*args: str) -> str:
+        done = subprocess.run(  # noqa: S603
+            ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return done.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    touch(root, "README.md")
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    git("checkout", "-q", "-b", "integration/w9-p1")
+    for rel, content in files.items():
+        touch(root, rel, content)
+    git("add", "-A")
+    git("commit", "-q", "-m", "integration")
+    return root, base, git("rev-parse", "HEAD")
+
+
+def parallel_schedule(always_allowed: list[str]) -> Schedule:
+    return Schedule(
+        version=1,
+        max_parallel_implementers=3,
+        always_allowed=always_allowed,
+        weeks=[
+            Week(
+                9,
+                [
+                    Stage(
+                        "W9-P1",
+                        "parallel",
+                        tasks=[
+                            TaskEntry("W9-T01", branch="feat/a", owns=["a/**"]),
+                            TaskEntry("W9-T02", branch="feat/b", owns=["b/**"]),
+                        ],
+                    )
+                ],
+            )
+        ],
     )
+
+
+def g1_on_real_repo(
+    tmp_path: Path, files: dict[str, str], always_allowed: list[str] | None = None
+) -> gate.CheckResult:
+    repo, base, head = git_repo(tmp_path / "repo", files)
+    schedule = parallel_schedule(always_allowed or [])
+    stage = schedule.get_stage("W9-P1")
+    assert stage is not None
+    ctx = gate.GateContext(
+        stage=stage,
+        schedule=schedule,
+        branch="integration/w9-p1",
+        base=base,
+        base_sha=base,
+        head_sha=head,
+        workdir=repo,
+        base_workdir=None,
+        repo=repo,
+        pr_body="",
+        runner=gate.default_runner,
+        which=all_tools,
+    )
+    return gate.g1_ownership(ctx)
+
+
+def test_g1_passes_when_every_integration_path_is_owned_by_some_task_of_the_stage(tmp_path: Path) -> None:
+    """PG-16, overview §7.4: sibling tasks' files are not blamed on each other on the integration branch."""
+    result = g1_on_real_repo(tmp_path, {"a/x.py": "1\n", "b/y.py": "2\n"})
+    assert (result.status, result.reason) == ("pass", "")
+
+
+def test_g1_fails_for_a_path_owned_by_no_task_of_the_stage(tmp_path: Path) -> None:
+    """PG-16, overview §7.4: an unowned path fails G1 with the stage named in the message."""
+    result = g1_on_real_repo(tmp_path, {"a/x.py": "1\n", "b/y.py": "2\n", "c/x.py": "3\n"})
+    assert result.status == "fail"
+    assert result.reason == "ownership: c/x.py not owned by any task of W9-P1"
+
+
+def test_g1_accepts_always_allowed_paths_only_when_their_special_rule_holds(tmp_path: Path) -> None:
+    """PG-16, overview §7.4: `wiki/log.md` has no rule; `**/__init__.py` must be an empty marker."""
+    allowed = ["wiki/log.md", "**/__init__.py"]
+    ok = g1_on_real_repo(
+        tmp_path / "ok", {"a/x.py": "1\n", "wiki/log.md": "e\n", "c/__init__.py": ""}, allowed
+    )
+    assert ok.status == "pass"
+    code = g1_on_real_repo(tmp_path / "code", {"c/__init__.py": "import os\nVALUE = 1\n"}, allowed)
+    assert code.reason == "ownership: c/__init__.py not owned by any task of W9-P1"
+
+
+def test_g1_is_skipped_for_a_sequential_stage_and_passes_on_an_empty_diff(dirs: tuple[Path, Path]) -> None:
+    sequential = by_name(run_gate("W1-S1", dirs, FakeRunner()), "G1 ownership")
+    assert sequential.status == "skip"
+    parallel = by_name(run_gate("W1-P1", dirs, FakeRunner()), "G1 ownership")
+    assert (parallel.status, parallel.reason) == ("pass", "no changed paths")
+
+
+def test_g1_fails_when_git_diff_fails(dirs: tuple[Path, Path]) -> None:
+    def broken(cmd: list[str], cwd: Path) -> CmdResult | None:
+        return CmdResult(128, "", "fatal: bad revision\n") if cmd[:2] == ["git", "diff"] else None
+
+    result = by_name(run_gate("W1-P1", dirs, FakeRunner(broken)), "G1 ownership")
+    assert (result.status, result.reason) == ("fail", "git diff exit 128")
 
 
 def test_failing_command_fails_the_check_and_keeps_the_last_40_lines(dirs: tuple[Path, Path]) -> None:
@@ -234,6 +338,29 @@ def test_report_shape_and_report_only_exit_code(dirs: tuple[Path, Path], tmp_pat
     assert {c["status"] for c in report["checks"]} <= {"pass", "fail", "skip"}
     assert any(c["name"] == "G5 ruff" and c["status"] == "fail" for c in report["checks"])
     assert gate.main(argv, runner=FakeRunner(rev_parse), **common) == 0  # type: ignore[arg-type]
+
+
+def test_worktree_setup_failure_is_a_failed_check_and_report_only_still_exits_0(tmp_path: Path) -> None:
+    """PG-16: a failing `git worktree add` is reported as `setup worktree`, not raised."""
+
+    def rules(cmd: list[str], cwd: Path) -> CmdResult | None:
+        if cmd[:2] == ["git", "rev-parse"]:
+            return CmdResult(0, "c0ffee\n")
+        if cmd[:3] == ["git", "worktree", "add"]:
+            return CmdResult(128, "", "fatal: cannot create worktree\n")
+        return None
+
+    reports = tmp_path / "gates"
+    common = {"schedule": load_schedule(), "report_dir": reports, "repo": tmp_path, "which": all_tools}
+    argv = ["--stage", "W1-S1", "--branch", "feat/x"]
+    runner = FakeRunner(rules)
+    assert gate.main([*argv, "--report-only"], runner=runner, **common) == 0  # type: ignore[arg-type]
+    assert gate.main(argv, runner=FakeRunner(rules), **common) == 1  # type: ignore[arg-type]
+    report = json.loads((reports / "W1-S1.json").read_text(encoding="utf-8"))
+    assert [(c["name"], c["status"]) for c in report["checks"]] == [("setup worktree", "fail")]
+    assert "git worktree add" in report["checks"][0]["reason"]
+    assert "fatal: cannot create worktree" in report["checks"][0]["reason"]
+    assert not any(c[:2] == ["uv", "sync"] for c, _ in runner.calls)
 
 
 def test_main_defaults_the_branch_to_the_integration_branch(dirs: tuple[Path, Path], tmp_path: Path) -> None:

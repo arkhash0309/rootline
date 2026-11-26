@@ -25,9 +25,11 @@ import argparse
 import http.client
 import importlib
 import json
+import queue
 import socket
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -100,6 +102,39 @@ def http_get(port: int, path: str, timeout: float = HTTP_TIMEOUT_S) -> int:
         connection.close()
 
 
+def wait_for_forwarding(stdout: Any, timeout_s: float) -> bool:
+    """True when a line containing `Forwarding from` is read from `stdout` within `timeout_s` seconds.
+
+    A reader thread calls the blocking `readline`, so the deadline holds even when the process prints
+    nothing. False on timeout or end of output (the process exited). After the first `Forwarding from`
+    line the thread keeps draining the pipe and discards the lines, so `kubectl` never blocks on a full pipe.
+    """
+    lines: queue.Queue[str] = queue.Queue()
+    ready = threading.Event()
+
+    def pump() -> None:
+        for line in iter(stdout.readline, ""):
+            if not ready.is_set():
+                lines.put(line)
+        lines.put("")
+
+    threading.Thread(target=pump, daemon=True).start()
+    deadline = time.monotonic() + timeout_s
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            line = lines.get(timeout=remaining)
+        except queue.Empty:
+            return False
+        if "Forwarding from" in line:
+            ready.set()
+            return True
+        if line == "":
+            return False
+
+
 class RealBackend:
     """kubectl through `scripts.proc.run`, real sockets, real clock."""
 
@@ -117,15 +152,9 @@ class RealBackend:
         # S603: `cmd` is the kubectl argument list built by build_port_forward_cmd, no shell is involved.
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)  # noqa: S603
         try:
-            deadline = time.monotonic() + PORT_FORWARD_READY_TIMEOUT_S
-            ready = False
-            while time.monotonic() < deadline and process.stdout is not None:
-                line = process.stdout.readline()
-                if "Forwarding from" in line:
-                    ready = True
-                    break
-                if line == "" and process.poll() is not None:
-                    break
+            ready = process.stdout is not None and wait_for_forwarding(
+                process.stdout, PORT_FORWARD_READY_TIMEOUT_S
+            )
             if not ready:
                 raise RuntimeError(
                     f"port-forward not ready after {PORT_FORWARD_READY_TIMEOUT_S:.0f} s: {cmd}"
@@ -195,7 +224,8 @@ def build_argocd_app_cmd(context: str, app: str) -> list[str]:
 def load_smoke_files(directory: Path = SMOKE_DIR, schema_path: Path = SCHEMA_PATH) -> list[SmokeFile]:
     """Load `<directory>/*.yaml` in name order and validate each against `schema_path`.
 
-    Raises SmokeError on the first invalid file.
+    Raises SmokeError on the first invalid file (invalid YAML, schema violation, a file name different from
+    `<component>.yaml`, or a check `name` used twice in one file).
     """
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     validator = jsonschema.Draft202012Validator(schema)
@@ -211,6 +241,10 @@ def load_smoke_files(directory: Path = SMOKE_DIR, schema_path: Path = SCHEMA_PAT
             raise SmokeError(f"{path.name}: {location}: {errors[0].message}")
         if path.name != f"{document['component']}.yaml":
             raise SmokeError(f"{path.name}: file name must be {document['component']}.yaml")
+        names = [check["name"] for check in document["checks"]]
+        duplicates = sorted({n for n in names if names.count(n) > 1})
+        if duplicates:
+            raise SmokeError(f"{path.name}: duplicate check name: {', '.join(duplicates)}")
         files.append(SmokeFile(component=document["component"], checks=document["checks"], path=path))
     return files
 
@@ -261,15 +295,22 @@ def wait_for_argocd(backend: Backend, context: str, timeout_s: int, poll_s: int 
         if result.returncode != 0:
             pending = [f"kubectl exit {result.returncode}"]
         else:
-            items = json.loads(result.stdout).get("items", [])
-            total = len(items)
-            for item in items:
-                sync = item.get("status", {}).get("sync", {}).get("status", "Unknown")
-                health = item.get("status", {}).get("health", {}).get("status", "Unknown")
-                if (sync, health) != ("Synced", "Healthy"):
-                    pending.append(f"{item['metadata']['name']} ({sync}/{health})")
-            if total == 0:
-                pending = ["no Application found"]
+            try:
+                document = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                document = None
+            if not isinstance(document, dict):
+                pending = ["kubectl output is not a JSON object"]
+            else:
+                items = document.get("items", [])
+                total = len(items)
+                for item in items:
+                    sync = item.get("status", {}).get("sync", {}).get("status", "Unknown")
+                    health = item.get("status", {}).get("health", {}).get("status", "Unknown")
+                    if (sync, health) != ("Synced", "Healthy"):
+                        pending.append(f"{item['metadata']['name']} ({sync}/{health})")
+                if total == 0:
+                    pending = ["no Application found"]
         if not pending:
             return Outcome("PASS", "argocd", "apps", f"{total} applications Synced/Healthy")
         if backend.monotonic() + poll_s > deadline:

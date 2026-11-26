@@ -62,7 +62,7 @@ The task that deploys the component creates its smoke file in the same commit se
 |---|---|---|
 | 1. ArgoCD | polls `kubectl --context <ctx> -n argocd get applications.argoproj.io -o json` every 15 s until at least 1 Application exists and every Application is `Synced` and `Healthy` | after `--timeout` seconds prints `FAIL argocd/apps: not Synced/Healthy after <n> s: <names>` |
 | 2. Memory | calls `memory_requests_gib` of `scripts/doctor.py` (W1-T06) on `kubectl get pods -A -o json`; limit 9.5 GiB (S2) | above the limit prints `FAIL cluster/memory-requests`; when `scripts/doctor.py` does not exist prints `SKIP cluster/memory-requests: scripts/doctor.py missing` |
-| 3. Checks | loads `tests/smoke/*.yaml` in file-name order, validates each file, runs each check in file order | an invalid file prints `FAIL smoke/<file>: <violation>` and the remaining files are not run; a check that does not pass prints `FAIL <component>/<name>: <detail>`; a port-forward that is not ready after 30 s or a request error is a `FAIL` of that check |
+| 3. Checks | loads `tests/smoke/*.yaml` in file-name order, validates each file, runs each check in file order | an invalid file (schema violation, wrong file name or a check `name` used twice in the file) prints `FAIL smoke/<file>: <violation>` and the remaining files are not run; a check that does not pass prints `FAIL <component>/<name>: <detail>`; a port-forward that is not ready after 30 s or a request error is a `FAIL` of that check |
 
 Output is one line per check, `PASS|FAIL|SKIP <component>/<name>: <detail>`. Exit code 0 when no line starts with `FAIL`, otherwise 1.
 

@@ -158,6 +158,33 @@ def test_two_globs_with_a_shared_prefix_overlap(tmp_path: Path) -> None:
     assert "W9-P1: W9-T01 and W9-T02 both own d/sub/**" in validate_schedule(load_schedule(path))
 
 
+def test_a_glob_with_a_wildcard_in_the_middle_overlaps_a_literal_path(tmp_path: Path) -> None:
+    path = write_schedule(
+        tmp_path,
+        """
+  - week: 9
+    stages:
+      - id: W9-P1
+        mode: parallel
+        after: []
+        tasks:
+          - {id: W9-T01, branch: feat/a, owns: ["deploy/upstream/**/values-gke.yaml"]}
+          - {id: W9-T02, branch: feat/b, owns: [deploy/upstream/argo/values-gke.yaml]}
+""",
+    )
+    assert validate_schedule(load_schedule(path)) == [
+        "W9-P1: W9-T01 and W9-T02 both own deploy/upstream/argo/values-gke.yaml"
+    ]
+
+
+def test_probe_replaces_every_wildcard_with_x() -> None:
+    assert swarm_lib._probe("deploy/upstream/**/values-gke.yaml") == "deploy/upstream/x/values-gke.yaml"
+    assert swarm_lib._probe("a/b*.py") == "a/bx.py"
+    assert swarm_lib._probe("a/?.py") == "a/x.py"
+    assert swarm_lib._probe("a/[ab].py") == "a/x.py"
+    assert swarm_lib._probe("a/b.py") == "a/b.py"
+
+
 def test_deferred_to_must_be_a_later_sequential_stage_of_the_same_week(tmp_path: Path) -> None:
     path = write_schedule(
         tmp_path,

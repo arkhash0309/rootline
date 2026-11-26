@@ -45,8 +45,9 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.check_ownership import always_allowed_ok
 from scripts.proc import run
-from scripts.swarm_lib import REPO, Schedule, Stage, load_schedule
+from scripts.swarm_lib import REPO, Schedule, Stage, is_owned, load_schedule, matches
 
 TAIL_LINES = 40
 COMMAND_TIMEOUT_S = 3600
@@ -197,27 +198,46 @@ def aggregate(
 
 
 def g1_ownership(ctx: GateContext) -> CheckResult:
+    """G1 on an integration branch (overview §7.4 and §7.7).
+
+    Every path in `git diff --name-only --no-renames -z <base>...<head>` MUST be owned (`owns` minus
+    `excludes`) by at least one task of the stage, or match `always_allowed` and satisfy that path's
+    special rule (`scripts/check_ownership.py`). A task is never blamed for a sibling's files; the per-task
+    check on a task branch is `scripts/check_ownership.py --task`.
+    """
     name = "G1 ownership"
     if ctx.stage.mode != "parallel":
         return skip(name, f"stage {ctx.stage.id} is sequential")
-    if ctx.which("uv") is None:
-        return skip(name, "uv not found on PATH")
-    outcomes = []
-    for task in ctx.stage.tasks:
-        cmd = [
-            "uv",
-            "run",
-            "python",
-            "scripts/check_ownership.py",
-            "--task",
-            task.id,
-            "--base",
-            ctx.base_sha,
-            "--branch",
-            ctx.head_sha,
-        ]
-        outcomes.append((task.id, ctx.run(cmd, ctx.repo)))
-    return aggregate(name, outcomes, lambda r: r.returncode == 0)
+    diff = ctx.run(
+        ["git", "diff", "--name-only", "--no-renames", "-z", f"{ctx.base_sha}...{ctx.head_sha}"], ctx.repo
+    )
+    if diff.returncode != 0:
+        return CheckResult(name, "fail", f"git diff exit {diff.returncode}", 0.0, tail(diff.output))
+    paths = [path for path in diff.stdout.split("\0") if path]
+    if not paths:
+        return CheckResult(name, "pass", "no changed paths")
+    merge_base = ctx.run(["git", "merge-base", ctx.base_sha, ctx.head_sha], ctx.repo)
+    if merge_base.returncode != 0:
+        return CheckResult(
+            name, "fail", f"git merge-base exit {merge_base.returncode}", 0.0, tail(merge_base.output)
+        )
+
+    def read(ref: str, path: str) -> str | None:
+        shown = ctx.run(["git", "show", f"{ref}:{path}"], ctx.repo)
+        return shown.stdout if shown.returncode == 0 else None
+
+    offenders = []
+    for path in paths:
+        if any(is_owned(task, path) for task in ctx.stage.tasks):
+            continue
+        if matches(path, ctx.schedule.always_allowed) and always_allowed_ok(
+            ctx.repo, path, merge_base.stdout.strip(), ctx.head_sha, read
+        ):
+            continue
+        offenders.append(f"ownership: {path} not owned by any task of {ctx.stage.id}")
+    if offenders:
+        return CheckResult(name, "fail", "; ".join(offenders), 0.0, tail("\n".join(offenders)))
+    return CheckResult(name, "pass")
 
 
 # ---- G2 lockfiles -------------------------------------------------------------------------------
@@ -854,34 +874,38 @@ def main(
         if workdir is None:
             branch_dir = repo_dir / ".swarm/worktrees" / stage.id
             base_dir = repo_dir / ".swarm/worktrees" / f"{stage.id}-base"
-            for path, sha in ((branch_dir, head_sha), (base_dir, base_sha)):
-                _remove_worktree(run_, repo_dir, path)
-                added = run_(["git", "worktree", "add", "--detach", str(path), sha], repo_dir)
-                if added.returncode != 0:
-                    raise RuntimeError(f"git worktree add {path} failed: {added.stderr.strip()}")
-                created.append(path)
-            synced = run_(["uv", "sync", "--all-packages", "--frozen"], branch_dir)
-            if synced.returncode != 0:
-                results = [
-                    CheckResult(
-                        "setup uv-sync", "fail", f"exit {synced.returncode}", 0.0, tail(synced.output)
-                    )
-                ]
+            try:
+                for path, sha in ((branch_dir, head_sha), (base_dir, base_sha)):
+                    _remove_worktree(run_, repo_dir, path)
+                    added = run_(["git", "worktree", "add", "--detach", str(path), sha], repo_dir)
+                    if added.returncode != 0:
+                        raise RuntimeError(f"git worktree add {path} failed: {added.stderr.strip()}")
+                    created.append(path)
+            except RuntimeError as error:
+                results = [CheckResult("setup worktree", "fail", str(error))]
             else:
-                results = run_checks(
-                    stage.id,
-                    branch,
-                    args.base,
-                    runner=run_,
-                    schedule=sched,
-                    workdir=branch_dir,
-                    base_workdir=base_dir,
-                    pr_body=pr_body,
-                    which=which,
-                    repo=repo_dir,
-                    base_sha=base_sha,
-                    head_sha=head_sha,
-                )
+                synced = run_(["uv", "sync", "--all-packages", "--frozen"], branch_dir)
+                if synced.returncode != 0:
+                    results = [
+                        CheckResult(
+                            "setup uv-sync", "fail", f"exit {synced.returncode}", 0.0, tail(synced.output)
+                        )
+                    ]
+                else:
+                    results = run_checks(
+                        stage.id,
+                        branch,
+                        args.base,
+                        runner=run_,
+                        schedule=sched,
+                        workdir=branch_dir,
+                        base_workdir=base_dir,
+                        pr_body=pr_body,
+                        which=which,
+                        repo=repo_dir,
+                        base_sha=base_sha,
+                        head_sha=head_sha,
+                    )
         else:
             results = run_checks(
                 stage.id,

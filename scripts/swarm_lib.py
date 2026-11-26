@@ -24,7 +24,7 @@ PROGRESS_PATH = REPO / ".swarm/progress.json"
 
 STAGE_ID_RE = re.compile(r"^W\d-[SP]\d$")
 MIGRATIONS_PREFIX = "services/api/migrations/versions/"
-GLOB_CHARS = "*?["
+GLOB_TOKEN_RE = re.compile(r"\*\*|\*|\?|\[[^\]]*\]")
 TABLE_HEADER = "| Stage | Mode | After | Tasks (branch) | Deferred steps → stage |"
 TABLE_SEPARATOR = "|---|---|---|---|---|"
 
@@ -154,22 +154,18 @@ def is_owned(task: TaskEntry, path: str) -> bool:
     return matches(path, task.owns) and not matches(path, task.excludes)
 
 
-def _fixed_prefix(glob: str) -> str | None:
-    """The part of a glob before its first wildcard, or None when the glob has no wildcard."""
-    positions = [glob.index(char) for char in GLOB_CHARS if char in glob]
-    return glob[: min(positions)] if positions else None
+def _probe(glob: str) -> str:
+    """A concrete path that `glob` matches: every `**`, `*`, `?` and `[...]` is replaced with `x`.
+
+    `deploy/upstream/**/values-gke.yaml` becomes `deploy/upstream/x/values-gke.yaml`; a literal path is
+    returned unchanged.
+    """
+    return GLOB_TOKEN_RE.sub("x", glob)
 
 
 def _representatives(task: TaskEntry) -> list[tuple[str, str]]:
-    """(label, probe path) pairs: each literal owned path, and each glob's fixed prefix plus `x`."""
-    reps: list[tuple[str, str]] = []
-    for glob in task.owns:
-        prefix = _fixed_prefix(glob)
-        if prefix is None:
-            reps.append((glob, glob))
-        else:
-            reps.append((glob, prefix + "x"))
-    return reps
+    """(label, probe path) pairs: one per owned glob, the probe being `_probe(glob)`."""
+    return [(glob, _probe(glob)) for glob in task.owns]
 
 
 def _adds_alembic_revision(task: TaskEntry) -> bool:

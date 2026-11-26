@@ -29,7 +29,7 @@ import copy
 import json
 import sys
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -117,19 +117,29 @@ def package_json_only_dependencies_changed(old: str | None, new: str | None) -> 
     return bool(old_data == new_data)
 
 
-def always_allowed_ok(repo: Path, path: str, merge_base: str, branch: str) -> bool:
+def always_allowed_ok(
+    repo: Path,
+    path: str,
+    merge_base: str,
+    branch: str,
+    read: Callable[[str, str], str | None] | None = None,
+) -> bool:
+    """Apply the special rule of an always-allowed path (module docstring); True when it holds.
+
+    `read(ref, path)` returns the file content at `ref` or None; the default reads `repo` through git.
+    """
+
+    def reader(ref: str, file_path: str) -> str | None:
+        return read(ref, file_path) if read is not None else read_at(repo, ref, file_path)
+
     name = path.rsplit("/", 1)[-1]
     if name == "__init__.py":
-        content = read_at(repo, branch, path)
+        content = reader(branch, path)
         return content is not None and is_marker_content(content)
     if name == "pyproject.toml":
-        return pyproject_only_dependencies_changed(
-            read_at(repo, merge_base, path), read_at(repo, branch, path)
-        )
+        return pyproject_only_dependencies_changed(reader(merge_base, path), reader(branch, path))
     if path == "apps/console/package.json":
-        return package_json_only_dependencies_changed(
-            read_at(repo, merge_base, path), read_at(repo, branch, path)
-        )
+        return package_json_only_dependencies_changed(reader(merge_base, path), reader(branch, path))
     return True
 
 
