@@ -1,0 +1,199 @@
+# versions.yaml - single source of truth for every pinned version (GEN-050).
+# Resolved on the pin date below to the newest stable release that satisfies the GEN-050 line.
+# Schema: scripts/versions_lib.py (CONSTRAINTS). Derived files: scripts/render_versions.py.
+# Conventions:
+#   - A mapping value has `version` (the value the GEN-050 line constrains), and optionally
+#     `chart` (Helm chart version), `app` (application version), `repo` (Helm repo URL or image repo),
+#     `digest` (sha256 of the multi-arch image index).
+#   - Rows whose GEN-050 line names a chart store the chart version in `version` and `chart`
+#     and the application version in `app`; `argo-cd` and `traefik` (lines on the application)
+#     store the application version in `version` and the chart version in `chart`.
+#   - CLI tools are stored without the leading `v` of their git tag.
+#   - Source of each value (command or URL) is listed in the comment above it; full table: wiki/versions.md.
+pin_date: "2026-11-27"
+
+# --- runtimes (source: PyPI uv, nodejs.org dist/index.json, endoflife.date python) ---
+python: "3.12.16"        # endoflife.date/api/python.json cycle 3.12 latest
+node: "24.22.3"          # https://nodejs.org/dist/index.json newest v24.x (LTS Krypton)
+uv: "0.13.10"            # https://pypi.org/pypi/uv/json info.version
+
+# --- Python packages (source: https://pypi.org/pypi/<pkg>/json, newest stable release inside the line) ---
+fastapi: "0.165.0"
+sqlalchemy: "2.0.58"     # 2.0.x line (2.1.9 exists, outside the line)
+alembic: "1.20.1"
+pydantic: "2.14.4"
+psycopg: "3.3.9"
+httpx: "0.29.0"
+anthropic: "1.17.0"      # 1.x line (2.14.0 exists, outside the line)
+langgraph: "1.2.24"
+langgraph-checkpoint-postgres: "3.2.1"
+# mcp 2.3.0: docs/protocol-versions.md and mcp_types/version.py in the 2.3.0 sdist list protocol
+# revision 2026-07-28 (KNOWN_PROTOCOL_VERSIONS), so no `mcp_protocol_revision` fallback key is set.
+mcp: "2.3.0"
+langfuse: "3.15.0"       # 3.x line (5.2.0 exists, outside the line)
+drain3: "0.9.11"
+ruptures: "1.1.10"
+fastembed: "0.9.1"
+pydantic-settings: "2.16.3"
+python-ulid: "3.2.1"     # 3.x line (4.2.0 exists, outside the line)
+pyjwt: "2.15.1"
+cryptography: "50.0.2"
+pyyaml: "6.0.4"
+ruamel-yaml: "0.19.1"    # latest 0.x (PyPI name ruamel.yaml)
+duckdb: "1.5.6"          # 1.x line (2.0.1 exists, outside the line)
+pandas: "2.3.3"          # 2.x line (3.1.1 exists, outside the line)
+pyarrow: "26.0.1"
+numpy: "2.5.5"
+scipy: "1.18.1"
+kubernetes: "37.0.3"
+jinja2: "3.1.6"
+uvicorn: "0.54.0"
+prometheus-client: "0.26.0"
+opentelemetry-sdk: "1.45.2"
+python-dotenv: "1.2.4"
+zstandard: "0.25.0"
+matplotlib: "3.11.2"
+testcontainers: "4.15.0"
+pathspec: "0.12.1"       # latest 0.x (1.1.1 exists, outside the line)
+jsonschema: "4.26.0"
+
+# --- Postgres extension (source: gh api repos/pgvector/pgvector/tags, newest v0.8.x) ---
+pgvector: "0.8.7"
+
+# --- Node packages (source: npm view <pkg> versions --json, newest stable inside the line) ---
+next: "16.4.6"
+react: "19.3.1"
+typescript: "5.9.3"      # 5.x line (7.0.2 is latest, outside the line)
+tailwindcss: "4.3.5"
+playwright: "1.65.1"     # npm view playwright version
+
+# --- identity and GitOps ---
+# keycloak 26.8.2: gh release list -R keycloak/keycloak --exclude-pre-releases (newest 26.8.x);
+# image digest from the quay.io registry API.
+keycloak:
+  version: "26.8.2"
+  repo: "quay.io/keycloak/keycloak"
+  digest: "sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3"
+# keycloak-config-cli: Docker Hub tag 6.6.0-26.8.1 is the newest build for Keycloak 26.8 (no 26.8.2 tag yet).
+keycloak-config-cli:
+  version: "6.6.0-26.8.1"
+  repo: "docker.io/adorsys/keycloak-config-cli"
+  digest: "sha256:1fafe0823820981c5d33d0e7682a27a817f4a178ab6933387a5c2fca366f92f2"
+argo-cd:                 # helm search repo argo/argo-cd --versions: chart 10.20.0, app v3.6.3
+  version: "3.6.3"
+  chart: "10.20.0"
+  repo: "https://argoproj.github.io/argo-helm"
+
+# --- local cluster ---
+k3d: "5.9.0"             # gh release list -R k3d-io/k3d --exclude-pre-releases
+# k3s: GKE REGULAR default is 1.36.4-gke.2377000 (GKE release notes, regular channel, 2026-11-10; gcloud
+# is not authenticated, so the release-notes page was used); newest stable rancher/k3s for minor 1.36
+# is v1.36.6+k3s1 (gh release list -R k3s-io/k3s).
+k3s: "v1.36.6+k3s1"
+gke: "REGULAR"
+
+# --- Helm charts (source: helm repo add + helm search repo <chart> --versions, first stable row in the line) ---
+kube-prometheus-stack:
+  version: "94.1.0"
+  chart: "94.1.0"
+  app: "0.95.2"
+  repo: "https://prometheus-community.github.io/helm-charts"
+loki:                    # chart line 6.x (7.7.0 exists, outside the line), SingleBinary mode
+  version: "6.55.0"
+  chart: "6.55.0"
+  app: "3.6.7"
+  repo: "https://grafana.github.io/helm-charts"
+tempo:                   # grafana/tempo (monolithic)
+  version: "1.24.4"
+  chart: "1.24.4"
+  app: "2.9.0"
+  repo: "https://grafana.github.io/helm-charts"
+opentelemetry-collector:
+  version: "0.183.2"
+  chart: "0.183.2"
+  app: "0.165.0"
+  repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+chaos-mesh:
+  version: "2.8.8"
+  chart: "2.8.8"
+  app: "2.8.8"
+  repo: "https://charts.chaos-mesh.org"
+kyverno:                 # chart line 3.x, app (Kyverno) 1.20.0
+  version: "3.10.0"
+  chart: "3.10.0"
+  app: "1.20.0"
+  repo: "https://kyverno.github.io/kyverno"
+external-secrets:
+  version: "2.15.0"
+  chart: "2.15.0"
+  app: "2.15.0"
+  repo: "https://charts.external-secrets.io"
+cert-manager:
+  version: "v1.21.3"
+  chart: "v1.21.3"
+  app: "v1.21.3"
+  repo: "https://charts.jetstack.io"
+cloudnative-pg:
+  version: "0.29.2"
+  chart: "0.29.2"
+  app: "1.30.2"
+  repo: "https://cloudnative-pg.github.io/charts"
+traefik:                 # line 3.x is the application; chart traefik/traefik 43.0.0 ships Traefik v3.8.0
+  version: "3.8.0"
+  chart: "43.0.0"
+  repo: "https://traefik.github.io/charts"
+opentelemetry-demo:      # exactly 0.42.8 (app 3.1.0), GEN-050
+  version: "0.42.8"
+  chart: "0.42.8"
+  app: "3.1.0"
+  repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+prometheus-operator-crds:
+  version: "33.0.2"
+  chart: "33.0.2"
+  app: "0.95.2"
+  repo: "https://prometheus-community.github.io/helm-charts"
+
+# --- policy, IaC and AI tooling ---
+opa: "1.23.0"            # gh release list -R open-policy-agent/opa --exclude-pre-releases
+terraform: "1.17.2"      # gh release list -R hashicorp/terraform --exclude-pre-releases
+google: "7.46.2"         # https://registry.terraform.io/v1/providers/hashicorp/google, newest 7.x
+ollama: "0.40.18"        # gh release list -R ollama/ollama --exclude-pre-releases
+
+# --- CI tooling (source: gh release list -R <owner/repo> --exclude-pre-releases, newest) ---
+kind: "0.33.0"           # kubernetes-sigs/kind
+kubeconform: "0.8.0"     # yannh/kubeconform
+tflint: "0.66.0"         # terraform-linters/tflint
+trivy: "0.76.2"          # aquasecurity/trivy
+gitleaks: "8.30.1"       # gitleaks/gitleaks
+kyverno-cli: "1.20.0"    # kyverno/kyverno (the CLI ships with the Kyverno release)
+cosign: "3.1.6"          # sigstore/cosign
+syft: "1.57.2"           # anchore/syft
+gateway-api: "1.7.0"     # kubernetes-sigs/gateway-api newest 1.x release (standard channel)
+
+# --- digest-pinned images (source: registry v2 API, Docker-Content-Digest of the multi-arch index) ---
+postgres-image:
+  version: "16"
+  repo: "ghcr.io/cloudnative-pg/postgresql"
+  digest: "sha256:34cd4159d07b3410a1b29da35072e2e927a0905e717a61afa3814624a2e8859a"
+# rancher/kubectl v1.36.2 matches the k3s minor 1.36 (ADR 0041); bitnami/kubectl has no 1.36 tag.
+kubectl-image: {version: "1.36.2", repo: "docker.io/rancher/kubectl", digest: "sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe"}
+busybox:
+  version: "1.37"
+  repo: "docker.io/library/busybox"
+  digest: "sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec"
+uv-image:
+  version: "0.13.10"
+  repo: "ghcr.io/astral-sh/uv"
+  digest: "sha256:a3ea1357342c1a4bf9a0c53a3deb1b55379aefa037338d8113d5771efa01774f"
+python-image:
+  version: "3.12.16-slim"
+  repo: "docker.io/library/python"
+  digest: "sha256:191083cdf6c7bda8c76158983163ead5d5cf7b77cf3033e805bb0f5296f51b4b"
+node-image:
+  version: "24.22.3-slim"
+  repo: "docker.io/library/node"
+  digest: "sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530"
+opa-image:
+  version: "1.23.0"
+  repo: "docker.io/openpolicyagent/opa"
+  digest: "sha256:e9feba5a5a7c563f8f2f99a14561f0eb828a49b952ef1f4be1a7a8260c7341c0"
