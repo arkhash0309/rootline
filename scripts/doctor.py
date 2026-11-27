@@ -96,7 +96,7 @@ def tool_checks() -> list[Check]:
             out.append(Check(name, "FAIL", "not on PATH"))
             continue
         r = run(cmd, check=False)
-        m = re.search(rx, r.stdout)
+        m = re.search(rx, r.stdout + r.stderr)
         out.append(Check(name, "OK" if m else "WARN", m.group(1) if m else "version not parsed"))
     git = next(c for c in out if c.name == "git")
     if git.status == "OK" and tuple(int(x) for x in git.detail.split(".")[:2]) < (2, 45):
