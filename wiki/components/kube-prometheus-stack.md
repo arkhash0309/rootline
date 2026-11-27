@@ -1,6 +1,6 @@
 # kube-prometheus-stack
 
-Status: chart implemented in W1-T11 (`deploy/charts/observability`, version pinned in `versions.yaml`); rendered and tested, not yet deployed.
+Status: chart implemented in W1-T11 (`deploy/charts/observability`, version pinned in `versions.yaml`); deployed on the local k3d cluster in W1-T12 (2026-11-27); Prometheus, Alertmanager, the operator and kube-state-metrics are Running.
 
 ## Purpose
 
@@ -18,9 +18,18 @@ Prometheus port 9090, Alertmanager port 9093 in namespace `observability`; Prome
 
 Chart values: `deploy/charts/observability/values.yaml` (key `kube-prometheus-stack`), overrides in `values-gke.yaml` (retention `1d`) and `values-ci.yaml` (retention `6h`; Loki, Tempo and the collector disabled). Chart `94.1.0`, application `0.95.2`. Set in `values.yaml`: `prometheusSpec.enableOTLPReceiver: true`, `prometheusSpec.otlp.promoteResourceAttributes` = `service.name`, `k8s.namespace.name`, `k8s.pod.name`, `k8s.deployment.name`, `enableRemoteWriteReceiver: true` (Tempo metrics-generator), selector-nil flags `false` for ServiceMonitor, PodMonitor and rules, `grafana.enabled: false`, `nodeExporter.enabled: false`, `crds.enabled: false` (CRDs come from the `prometheus-crds` Application), `defaultRules.create: false`. `kubeControllerManager`, `kubeEtcd`, `kubeScheduler` and `kubeProxy` are `enabled: false` (ADR 0046 O5): on k3s these components listen on `127.0.0.1` only and on GKE they are managed, so their targets would always be down. ServiceMonitors `kubelet`, `apiserver`, `coredns`, `kube-state-metrics`, `operator`, `prometheus` and `alertmanager` stay.
 
-NetworkPolicies (`templates/networkpolicies.yaml`, namespace `observability`, ADR 0046 O4): `allow-same-namespace`, `allow-otlp-ingress` (only the collector pods, labels `app.kubernetes.io/name: opentelemetry-collector` and `component: agent-collector`; 4317, 4318 from every namespace), `allow-query-ingress` (9090, 3100, 3200 from `rootline` and `observability`), `allow-alertmanager-ingress` (9093 from `observability`), `allow-operator-webhook-ingress` (only the operator pods; 10250 from any address, the kube-apiserver calls the admission webhook), `allow-egress-pods` (all namespaces), `allow-egress-apiserver` (TCP 443, 6443 to any address) and `allow-egress-kubelet` (only pods labelled `app.kubernetes.io/name: prometheus`; TCP 10250 to any address; no other policy allows egress 10250). The Prometheus pod label is unverified until W1-T12 Step 5. The optional `debug.grafana` flag of ARC-002 is not implemented (it is a MAY).
+NetworkPolicies (`templates/networkpolicies.yaml`, namespace `observability`, ADR 0046 O4): `allow-same-namespace`, `allow-otlp-ingress` (only the collector pods, labels `app.kubernetes.io/name: opentelemetry-collector` and `component: agent-collector`; 4317, 4318 from every namespace), `allow-query-ingress` (9090, 3100, 3200 from `rootline` and `observability`), `allow-alertmanager-ingress` (9093 from `observability`), `allow-operator-webhook-ingress` (only the operator pods; 10250 from any address, the kube-apiserver calls the admission webhook), `allow-egress-pods` (all namespaces), `allow-egress-apiserver` (TCP 443, 6443 to any address) and `allow-egress-kubelet` (only pods labelled `app.kubernetes.io/name: prometheus`; TCP 10250 to any address; no other policy allows egress 10250). The Prometheus pod label is verified (see "Verified on the cluster"). The optional `debug.grafana` flag of ARC-002 is not implemented (it is a MAY).
 
 Scrape interval 15 s; retention 2 d locally and 1 d on GKE; Grafana is not deployed (ARC-002). Memory requests: Prometheus 768 Mi, Alertmanager 48 Mi, operator 96 Mi, kube-state-metrics 64 Mi (ARC-030).
+
+## Verified on the cluster
+
+W1-T12 Step 5, 2026-11-27, k3d `rootline`, same revision and caveat as in [otel-collector](otel-collector.md) "Verified on the cluster". The NetworkPolicy label selectors of ADR 0046 O4 match exactly one pod each:
+
+| Command | Output |
+|---|---|
+| `kubectl -n observability get pods -l app.kubernetes.io/name=prometheus -o name` | `pod/prometheus-observability-kube-prometh-prometheus-0` |
+| `kubectl -n observability get pods -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator -o name` | `pod/observability-kube-prometh-operator-697d85fccc-jnqzh` |
 
 ## Dependencies
 
@@ -40,4 +49,4 @@ Prometheus down: no alerts fire and no metrics are available to `mcp-telemetry`.
 
 ## Last verified
 
-2026-11-27, 908e5ed. Verified by `helm template` of the chart `deploy/charts/observability` (`tests/repo/test_observability_values.py`, 24 checks plus `helm dependency build`); the stack has not been deployed to a cluster yet (that happens in W1-T12).
+2026-11-27, 297c528 (W1-T12). `helm template` of the chart `deploy/charts/observability` and the cluster checks in "Verified on the cluster".

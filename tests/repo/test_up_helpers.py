@@ -298,3 +298,18 @@ def test_trust_ca_command_lists() -> None:
         "Root",
         "C:\\r\\ca.crt",
     ]
+
+
+def test_platform_smoke_lists_every_local_application() -> None:
+    """PG-16, INF-020: platform.yaml has one argocd_app check per Application enabled for local."""
+    values = yaml.safe_load((REPO / "deploy/root/values.yaml").read_text(encoding="utf-8"))
+    enabled = sorted(
+        name
+        for name, app in values["apps"].items()
+        if app["enabled"] and (not app.get("envs") or "local" in app["envs"])
+    )
+    smoke = yaml.safe_load((REPO / "tests/smoke/platform.yaml").read_text(encoding="utf-8"))
+    assert smoke["component"] == "platform"
+    assert sorted(c["app"] for c in smoke["checks"]) == enabled
+    assert {c["kind"] for c in smoke["checks"]} == {"argocd_app"}
+    assert {c["expect"] for c in smoke["checks"]} == {"Synced/Healthy"}

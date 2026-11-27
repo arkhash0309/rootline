@@ -1,0 +1,16 @@
+# One check per ArgoCD Application enabled for `local` in deploy/root/values.yaml (W1-T12 Step 8, PG-16).
+component: platform
+checks:
+  - {name: namespaces-synced, kind: argocd_app, app: namespaces, expect: Synced/Healthy}
+  - {name: gateway-api-crds-synced, kind: argocd_app, app: gateway-api-crds, expect: Synced/Healthy}
+  - {name: cert-manager-synced, kind: argocd_app, app: cert-manager, expect: Synced/Healthy}
+  - {name: external-secrets-synced, kind: argocd_app, app: external-secrets, expect: Synced/Healthy}
+  - {name: cnpg-operator-synced, kind: argocd_app, app: cnpg-operator, expect: Synced/Healthy}
+  - {name: kyverno-synced, kind: argocd_app, app: kyverno, expect: Synced/Healthy}
+  - {name: chaos-mesh-synced, kind: argocd_app, app: chaos-mesh, expect: Synced/Healthy}
+  - {name: prometheus-crds-synced, kind: argocd_app, app: prometheus-crds, expect: Synced/Healthy}
+  - {name: platform-config-synced, kind: argocd_app, app: platform-config, expect: Synced/Healthy}
+  - {name: postgres-synced, kind: argocd_app, app: postgres, expect: Synced/Healthy}
+  - {name: observability-synced, kind: argocd_app, app: observability, expect: Synced/Healthy}
+  - {name: rootline-synced, kind: argocd_app, app: rootline, expect: Synced/Healthy}
+  - {name: workload-synced, kind: argocd_app, app: workload, expect: Synced/Healthy}
