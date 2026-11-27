@@ -3,7 +3,19 @@ name = "rootline-common"
 version = "0.1.0"
 description = "Shared config, logging, ULIDs, auth, audit and problem+json helpers"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+  "fastapi>=0.165.0,<1",
+  "pydantic>=2.14.4,<3",
+  "pydantic-settings>=2.16.3,<3",
+  "python-ulid>=3.2.1,<4",
+  "prometheus-client>=0.26.0,<1",
+  "opentelemetry-sdk>=1.45.2,<2",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.45.2,<2",
+  "opentelemetry-instrumentation-fastapi>=0.66b0,<0.67",
+  "opentelemetry-instrumentation-httpx>=0.66b0,<0.67",
+  "opentelemetry-instrumentation-psycopg>=0.66b0,<0.67",
+  "httpx>=0.29.0,<1",
+]
 
 [build-system]
 requires = ["hatchling>=1.27"]
