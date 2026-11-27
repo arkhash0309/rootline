@@ -46,6 +46,8 @@ loki:
           index: {prefix: index_, period: 24h}
     limits_config: {retention_period: 48h, allow_structured_metadata: true}   # WKL-023 local
     compactor: {retention_enabled: true, delete_request_store: filesystem}
+  sidecar:
+    rules: {enabled: false}               # ARC-030: the rules sidecar container is outside the memory budget
   singleBinary:
     replicas: 1
     resources: {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
@@ -75,7 +77,7 @@ tempo:
 
 opentelemetry-collector:                  # WKL-020
   enabled: true
-  fullnameOverride: otel-collector        # Service and DaemonSet name: otel-collector
+  fullnameOverride: otel-collector        # Service name: otel-collector; DaemonSet name: otel-collector-agent (chart naming, see ADR decision pending from the planner)
   mode: daemonset
   service: {enabled: true}                # the chart creates no Service in daemonset mode by default
   image: {repository: otel/opentelemetry-collector-contrib}
@@ -84,6 +86,13 @@ opentelemetry-collector:                  # WKL-020
     kubernetesAttributes: {enabled: true}
     logsCollection: {enabled: true, includeCollectorLogs: false}
   resources: {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
+  ports:                                  # ARC-010: namespace observability is PSS baseline, which forbids hostPort
+    otlp: {enabled: true, hostPort: 0}
+    otlp-http: {enabled: true, hostPort: 0}
+    jaeger-compact: {enabled: false}      # Jaeger and Zipkin receivers are outside WKL-020
+    jaeger-thrift: {enabled: false}
+    jaeger-grpc: {enabled: false}
+    zipkin: {enabled: false}
   config:
     receivers:
       otlp: {protocols: {grpc: {endpoint: "0.0.0.0:4317"}, http: {endpoint: "0.0.0.0:4318"}}}

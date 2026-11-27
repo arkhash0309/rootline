@@ -1,4 +1,4 @@
 # Overrides for env `local` (k3d). The base values.yaml already holds the local profile (retention
 # 2 d / 48 h / 48 h, WKL-023); this file exists so every environment has a values-<env>.yaml and
-# the root chart's valueFiles list resolves without ignoreMissingValueFiles.
+# the root chart's valueFiles list resolves (the root chart also sets ignoreMissingValueFiles: true).
 global: {}

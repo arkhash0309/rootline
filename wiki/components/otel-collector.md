@@ -38,4 +38,4 @@ Backend unreachable: `batch` and `memory_limiter` drop data after the buffer is 
 
 ## Last verified
 
-2026-11-27, 908e5ed. Verified by `helm template` of the chart `deploy/charts/observability` (`tests/repo/test_observability_values.py`, 17 checks plus `helm dependency build`); the stack has not been deployed to a cluster yet (that happens in W1-T12).
+2026-11-27, 908e5ed. Verified by `helm template` of the chart `deploy/charts/observability` (`tests/repo/test_observability_values.py`, 20 checks plus `helm dependency build`); the stack has not been deployed to a cluster yet (that happens in W1-T12).

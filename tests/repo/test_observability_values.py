@@ -167,6 +167,48 @@ def test_collector_pipelines() -> None:
     assert cfg["exporters"]["otlphttp/loki"]["endpoint"] == "http://loki.observability.svc:3100/otlp"
 
 
+def _pod_specs(docs: Docs) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield (workload name, pod spec) for every workload kind in `docs`."""
+    for d in docs:
+        if d["kind"] in ("Deployment", "DaemonSet", "StatefulSet"):
+            yield d["metadata"]["name"], d["spec"]["template"]["spec"]
+        elif d["kind"] == "Pod":
+            yield d["metadata"]["name"], d["spec"]
+
+
+def test_no_host_ports_and_no_jaeger_zipkin_ports() -> None:
+    """ARC-010 and WKL-020: namespace `observability` is PSS baseline, so no container port has a
+    non-zero hostPort; only OTLP ports 4317 and 4318 are exposed by the collector."""
+    docs = tmpl("observability", "local")
+    all_ports: list[tuple[str, int, str]] = []
+    for workload, spec in _pod_specs(docs):
+        for container in spec.get("containers", []) + spec.get("initContainers", []):
+            for port in container.get("ports", []):
+                assert port.get("hostPort", 0) == 0, f"{workload}/{container['name']}: {port}"
+                all_ports.append((workload, port["containerPort"], port.get("name", "")))
+    collector_ports = {(n, p) for w, p, n in all_ports if w == "otel-collector-agent"}
+    assert collector_ports == {("otlp", 4317), ("otlp-http", 4318)}
+    assert not {p for w, p, _ in all_ports if w == "otel-collector-agent"} & {6831, 14250, 14268, 9411}
+    service_ports = {
+        port["port"]
+        for d in of_kind(docs, "Service")
+        if d["metadata"]["name"] == "otel-collector"
+        for port in d["spec"]["ports"]
+    }
+    assert service_ports == {4317, 4318}
+
+
+def test_loki_rules_sidecar_disabled() -> None:
+    """ARC-030: the Loki rules sidecar is not rendered (it is outside the memory budget)."""
+    for d in tmpl("observability", "local"):
+        if d["metadata"]["name"] == "loki" and d["kind"] == "StatefulSet":
+            names = [c["name"] for c in d["spec"]["template"]["spec"]["containers"]]
+            assert names == ["loki"]
+            break
+    else:
+        pytest.fail("Loki StatefulSet not rendered")
+
+
 def test_service_dns_names() -> None:
     """WKL-020: Services are named loki, tempo and otel-collector (DNS names in the exporters)."""
     services = {d["metadata"]["name"] for d in of_kind(tmpl("observability", "local"), "Service")}
