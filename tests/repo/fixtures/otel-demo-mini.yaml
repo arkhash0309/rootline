@@ -1,0 +1,264 @@
+# Hand-written excerpt of `helm template shop open-telemetry/opentelemetry-demo --version 0.42.8` output
+# (W1-T09). It holds one object per shape the transforms must handle; it is not a full render.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shop-opentelemetry-demo
+  namespace: default
+  labels:
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/part-of: opentelemetry-demo
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shop-registry-credentials
+  namespace: default
+  labels:
+    app.kubernetes.io/component: payment
+type: Opaque
+stringData:
+  token: not-a-real-secret
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flagd-config
+  namespace: default
+  labels:
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/part-of: opentelemetry-demo
+data:
+  demo.flagd.json: |
+    {
+      "$schema": "https://flagd.dev/schema/v0/flags.json",
+      "flags": {
+        "paymentFailure": {
+          "defaultVariant": "on",
+          "description": "Fail payment service charge requests n%",
+          "state": "ENABLED",
+          "variants": {
+            "on": 1,
+            "off": 0
+          }
+        },
+        "cartFailure": {
+          "defaultVariant": "off",
+          "description": "Fail cart service requests",
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          }
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  namespace: default
+  labels:
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/name: payment
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      name: tcp-service
+      targetPort: 8080
+  selector:
+    app.kubernetes.io/name: payment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+  namespace: default
+  labels:
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/name: flagd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8013
+      name: tcp-service
+      targetPort: 8013
+  selector:
+    app.kubernetes.io/name: flagd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: default
+  labels:
+    app.kubernetes.io/component: jaeger
+    app.kubernetes.io/name: jaeger
+spec:
+  ports:
+    - port: 4317
+      name: otlp-grpc
+  selector:
+    app.kubernetes.io/name: jaeger
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  namespace: default
+  labels:
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/name: payment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: payment
+        app.kubernetes.io/name: payment
+    spec:
+      serviceAccountName: shop-opentelemetry-demo
+      containers:
+        - name: payment
+          image: ghcr.io/open-telemetry/demo:2.1.3-payment
+          ports:
+            - containerPort: 8080
+              name: service
+          env:
+            - name: OTEL_SERVICE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: "metadata.labels['app.kubernetes.io/component']"
+            - name: OTEL_COLLECTOR_NAME
+              value: shop-otelcol
+            - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+              value: cumulative
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://$(OTEL_COLLECTOR_NAME):4317
+          resources:
+            limits:
+              memory: 120Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  namespace: default
+  labels:
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/name: flagd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flagd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: flagd
+        app.kubernetes.io/name: flagd
+    spec:
+      initContainers:
+        - name: init-config
+          image: busybox:latest
+          command: ["sh", "-c", "cp /config-ro/demo.flagd.json /config-rw/demo.flagd.json"]
+          volumeMounts:
+            - name: config-ro
+              mountPath: /config-ro
+            - name: config-rw
+              mountPath: /config-rw
+      containers:
+        - name: flagd
+          image: ghcr.io/open-feature/flagd:v0.12.9
+          command: ["/flagd-build", "start", "--port", "8013", "--uri", "file:./etc/flagd/demo.flagd.json"]
+          ports:
+            - containerPort: 8013
+              name: service
+          env:
+            - name: FLAGD_METRICS_EXPORTER
+              value: otel
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://$(OTEL_COLLECTOR_NAME):4317
+            - name: OTEL_COLLECTOR_NAME
+              value: shop-otelcol
+          volumeMounts:
+            - name: config-rw
+              mountPath: /etc/flagd
+        - name: flagd-ui
+          image: ghcr.io/open-telemetry/demo:2.1.3-flagd-ui
+          ports:
+            - containerPort: 4000
+              name: ui
+          volumeMounts:
+            - name: config-rw
+              mountPath: /app/data
+      volumes:
+        - name: config-rw
+          emptyDir: {}
+        - name: config-ro
+          configMap:
+            name: flagd-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: default
+  labels:
+    app.kubernetes.io/component: load-generator
+    app.kubernetes.io/name: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: load-generator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: load-generator
+        app.kubernetes.io/name: load-generator
+    spec:
+      containers:
+        - name: load-generator
+          image: ghcr.io/open-telemetry/demo:2.1.3-load-generator
+          ports:
+            - containerPort: 8089
+              name: service
+          env:
+            - name: LOCUST_USERS
+              value: "5"
+            - name: LOCUST_SPAWN_RATE
+              value: "1"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://shop-otelcol:4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: default
+  labels:
+    app.kubernetes.io/component: jaeger
+    app.kubernetes.io/name: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: jaeger
+        app.kubernetes.io/name: jaeger
+    spec:
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.0
+          ports:
+            - containerPort: 16686
