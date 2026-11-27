@@ -60,6 +60,11 @@ opentelemetry-collector:
   chart: 0.183.2
   repo: https://open-telemetry.github.io/opentelemetry-helm-charts
   version: 0.183.2
+prometheus-operator-crds:
+  app: 0.95.2
+  chart: 33.0.2
+  repo: https://prometheus-community.github.io/helm-charts
+  version: 33.0.2
 tempo:
   app: 2.9.0
   chart: 1.24.4

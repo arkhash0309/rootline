@@ -1,0 +1,17 @@
+# Chart open-telemetry/opentelemetry-demo 0.42.8 (app 3.1.0). WKL-002, WKL-003.
+default:
+  replicas: 1
+components:
+  accounting: {enabled: false}
+  agent: {enabled: false}
+  chatbot: {enabled: false}
+  mcp: {enabled: false}
+  telemetry-docs: {enabled: false}
+  opamp-server: {enabled: false}
+  firepit: {enabled: false}
+opentelemetry-collector: {enabled: false}
+otel-ebpf-profiler: {enabled: false}
+jaeger: {enabled: false}
+prometheus: {enabled: false}
+grafana: {enabled: false}
+opensearch: {enabled: false}

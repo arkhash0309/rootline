@@ -1,0 +1,8 @@
+# CloudNativePG cluster `rootline-pg` and database `keycloak` (spec §13, DB-001, DB-002).
+# The operator is the separate Application `cnpg-operator` (sync wave -3).
+apiVersion: v2
+name: postgres
+description: Rootline CNPG Postgres cluster in namespace rootline-data
+type: application
+version: 0.1.0
+appVersion: "16"

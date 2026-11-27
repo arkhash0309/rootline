@@ -1,0 +1,31 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: rootline-pg
+  namespace: rootline-data
+spec:
+  instances: 1
+  imageName: {{ .Values.image | quote }}
+  storage:
+    size: {{ .Values.storage.size }}
+    storageClass: {{ .Values.storage.storageClass }}
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}
+  postgresql:
+    parameters:
+      {{- toYaml .Values.parameters | nindent 6 }}
+  bootstrap:
+    initdb:
+      database: rootline
+      owner: rootline_migrator
+      secret:
+        name: pg-rootline-migrator
+  managed:
+    roles:
+      {{- range .Values.roles }}
+      - name: {{ . }}
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-{{ . | replace "_" "-" }}
+      {{- end }}

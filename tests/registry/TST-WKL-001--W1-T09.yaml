@@ -1,0 +1,5 @@
+id: TST-WKL-001
+introduced_by: W1-T09
+selectors:
+  - kind: pytest
+    target: tests/repo/test_workload_render.py::test_tst_wkl_001_deterministic

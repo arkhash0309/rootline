@@ -1,0 +1,3 @@
+# env `gke`: regional persistent disk storage class (DB-001).
+storage:
+  storageClass: standard-rwo
