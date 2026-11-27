@@ -1,4 +1,4 @@
-"""/healthz, /readyz, /metrics (ARC-020)."""
+"""/healthz, /readyz, /metrics (ARC-020, PG-24 D7)."""
 
 from collections.abc import Awaitable, Callable, Mapping
 
@@ -13,7 +13,7 @@ async def _metrics() -> Response:
 
 
 def make_metrics_route() -> APIRoute:
-    """Return the `GET /metrics` route (Prometheus text exposition format, ARC-020)."""
+    """`GET /metrics` alone, for an app that does not include make_health_router (PG-24 D7)."""
     return APIRoute("/metrics", _metrics, methods=["GET"], include_in_schema=False)
 
 
@@ -35,9 +35,8 @@ def make_health_router(checks: Mapping[str, Callable[[], Awaitable[bool]]]) -> A
             if not ok:
                 failing.append(name)
         return JSONResponse(
-            {"failing": failing} if failing else {"status": "ready"},
-            status_code=503 if failing else 200,
+            {"failing": failing} if failing else {"status": "ready"}, status_code=503 if failing else 200
         )
 
-    router.routes.append(make_metrics_route())
+    router.routes.append(make_metrics_route())  # /metrics is part of the health router (PG-24 D7)
     return router

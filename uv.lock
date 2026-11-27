@@ -888,14 +888,14 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.165.0,<1" },
-    { name = "httpx", specifier = ">=0.29.0,<1" },
+    { name = "fastapi", specifier = ">=0.165.0,<0.166" },
+    { name = "httpx", specifier = ">=0.29.0,<0.30" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.66b0,<0.67" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.66b0,<0.67" },
     { name = "opentelemetry-instrumentation-psycopg", specifier = ">=0.66b0,<0.67" },
     { name = "opentelemetry-sdk", specifier = ">=1.45.2,<2" },
-    { name = "prometheus-client", specifier = ">=0.26.0,<1" },
+    { name = "prometheus-client", specifier = ">=0.26.0,<0.27" },
     { name = "pydantic", specifier = ">=2.14.4,<3" },
     { name = "pydantic-settings", specifier = ">=2.16.3,<3" },
     { name = "python-ulid", specifier = ">=3.2.1,<4" },

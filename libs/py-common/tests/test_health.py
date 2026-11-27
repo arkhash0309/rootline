@@ -1,4 +1,4 @@
-"""Verifies ARC-020."""
+"""Verifies ARC-020 and PG-24 D7."""
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -37,6 +37,12 @@ def test_check_exception_counts_as_failing() -> None:
     app = FastAPI()
     app.include_router(make_health_router({"db": boom}))
     assert TestClient(app).get("/readyz").json() == {"failing": ["db"]}
+
+
+def test_health_router_serves_metrics_once() -> None:
+    """PG-24 D7: make_health_router mounts /metrics itself, exactly once."""
+    paths = [getattr(r, "path", None) for r in make_health_router({}).routes]
+    assert sorted(p for p in paths if p) == ["/healthz", "/metrics", "/readyz"]
 
 
 def test_metrics_route_standalone() -> None:
