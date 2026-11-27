@@ -45,6 +45,7 @@ WIK-001: `wiki/` is the persistent working memory for the AI coding agents that 
 - [adr/0040-swarm-plan-amendments-w1-t16.md](adr/0040-swarm-plan-amendments-w1-t16.md) — ADR 0040 — Swarm tooling plan amendments from the W1-T16 review (spec-gap)
 - [adr/0041-w1-t02-version-gaps.md](adr/0041-w1-t02-version-gaps.md) — ADR 0041 — Version pinning gaps found in W1-T02 (spec-gap)
 - [adr/0042-w1-t05-baseline-substitute.md](adr/0042-w1-t05-baseline-substitute.md) — ADR 0042 — W1-T05 baseline and verification without the `writing-skills` skill (spec-gap)
+- [adr/0043-w1-t07-review-decisions.md](adr/0043-w1-t07-review-decisions.md) — ADR 0043 — `rootline_common` decisions from the W1-T07 review (spec-gap)
 - [architecture.md](architecture.md) — Living architecture: context diagram and component table with links to the spec.
 - [components/agent.md](components/agent.md) — Component page for `agent` (WIK-010).
 - [components/api.md](components/api.md) — Component page for `api` (WIK-010).
