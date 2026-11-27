@@ -1317,6 +1317,8 @@ Fill the PR body sections before creating (Requirement IDs: WIK-001–021, §3; 
 
 - [ ] **Step 1 (pre-dispatch, coordinator — overview §7.3): Load the superpowers `writing-skills` skill** and follow its process; the coordinator dispatches a fresh `rootline-implementer` (Sonnet 5.5, high) as the test subject and passes the recorded baseline to the W1-T05 implementer (it requires a baseline test of agent behaviour without the skill; use the scenario "implement a one-line change in `libs/py-common` and finish the task" and record whether the agent updated `wiki/log.md` and ran `task wiki:lint`).
 
+  > **Amended 2026-11-27, per PG-23 (overview §5; ADR 0042).** The `writing-skills` skill is not available to the coordinator, so it is not loaded in Step 1 or Step 4. Step 1 is the baseline scenario run of ADR 0042 D2 to D5: one fresh `rootline-implementer` (`model: "sonnet"`, `effort: "high"`, `isolation: "worktree"`) with the fixed prompt of ADR 0042 D2 step 3, the record `.swarm/gates/W1-T05-baseline.json` (fields in ADR 0042 D3), one retry for an invalid attempt, and `BLOCKED` (stage W1-P2 stops for the owner) after a second invalid attempt. Step 1 writes nothing to `wiki/log.md`. The coordinator passes the record JSON to the W1-T05 implementer in `details`; a `baseline-passes` result changes nothing in Steps 2, 3 and 5. Step 4 is the verification scenario run of ADR 0042 D6, recorded in `.swarm/gates/W1-T05-verify.json`, with the `wiki/log.md` line of ADR 0042 D6 step 3 on `feat/w1-wiki-skill-deferred`. The red-green test of Steps 2 and 5 is unchanged.
+
 - [ ] **Step 2: Write the failing test**
 
 ```python
@@ -1865,9 +1867,18 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Requirement IDs:** ARC-020, API-002, API-004, API-006, OBS-001, GEN-002.
 **Depends on:** W1-T02. **Parallel-safe** with W1-T03…T06. **Branch:** `feat/w1-py-common`.
 
+> **Amended 2026-11-27 after the W1-T07 review, per PG-24 (overview §5; ADR 0043 `wiki/adr/0043-w1-t07-review-decisions.md`).** The review of `feat/w1-py-common` at `c91ea10` found seven plan-text defects. The "Files" `pyproject.toml` line, the Step 1 test blocks `test_timeutil.py`, `test_problem.py`, `test_health.py` and `test_requestid.py`, and the Step 3 blocks `timeutil.py`, `problem.py`, `health.py` and `requestid.py` were changed to carry these decisions. The planner ran the changed blocks on 2026-11-27 (Python `3.12.16`, `fastapi` `0.165.0`, `starlette` `1.10.0`, `httpx` `0.29.0`, `prometheus-client` `0.26.0`, `python-ulid` `3.2.1`): every test passes and `mypy` with `strict = true` reports no issue; the new and changed tests in `test_problem.py`, `test_requestid.py` and `test_timeutil.py` fail on the `c91ea10` modules. The implementer copies the blocks' content and then runs `uv run ruff format` and `uv run ruff check` on each file (Global Constraints "Formatting", PG-19):
+> - **D1 (version bounds).** W1-T02 Step 6 applies unchanged: a 0.x package gets `>=<resolved>,<0.<minor+1>>`, any other package `>=<resolved>,<<major+1>>`. The dependency list of `libs/py-common/pyproject.toml` is exactly the "Files" list below; on `c91ea10` only `fastapi` (`<1`), `prometheus-client` (`<1`) and `httpx` (`<1`) were wrong.
+> - **D2 (request ID on a 500).** `RequestIdMiddleware` stores the resolved ID at `scope["state"]["request_id"]` (it creates `scope["state"] = {}` when the key is absent) before it calls the app. The `Exception` handler `_internal` runs in Starlette's `ServerErrorMiddleware`, outside `RequestIdMiddleware`, so it reads that value, logs the error with `request_id_var` set to it, returns it as `request_id` in the body and adds the response header `X-Request-Id` with it. The body helper's request ID is, in order: `scope["state"]["request_id"]`, then `request_id_var.get()`, then a new ULID. Test: `test_problem.py::test_internal_error_carries_incoming_request_id`.
+> - **D3 (HTTP exceptions).** `install_problem_handlers` also registers a handler for `starlette.exceptions.HTTPException` (which covers `fastapi.HTTPException`) that returns `application/problem+json` and keeps the exception's headers. Statuses map through `HTTP_STATUS_PROBLEMS`: `401` `unauthenticated` "Unauthenticated", `403` `forbidden` "Forbidden", `404` `not_found` "Not found", `405` `method_not_allowed` "Method not allowed"; `detail` is the exception's string detail truncated to 500 characters. Every other status keeps its status and gets code `internal`, title "Internal error", detail "unexpected error" and one `WARNING` log line; `204` and `304` return an empty body. `PROBLEM_CODES` gains `"method_not_allowed": 405` (spec API-002 table row added by PG-24).
+> - **D4 (non-UTF-8 request ID).** The middleware takes the first `x-request-id` header of `scope["headers"]` and decodes it with `latin-1`; a value that is not a ULID (`is_ulid` is false) is replaced by `new_ulid()` (API-004, unchanged).
+> - **D5 (reserved `extra` keys).** `Problem(extra=...)` and the body helper drop the keys `type`, `title`, `status`, `detail`, `instance`, `code`, `request_id` (`RESERVED_PROBLEM_KEYS`) silently; no error is raised.
+> - **D6 (naive datetimes).** `to_rfc3339` raises `ValueError("naive datetime not allowed: <dt.isoformat()>")` for a datetime whose `utcoffset()` is `None`; `parse_rfc3339` raises `ValueError("naive datetime not allowed: <text>")` for a string without an offset or `Z`.
+> - **D7 (health router).** `make_health_router` serves `/healthz`, `/readyz` and `/metrics`. `make_metrics_route()` exists only for an app that does not include the health router; an app MUST NOT include both.
+
 **Files:**
 - Create: `libs/py-common/rootline_common/{ids,timeutil,logging,problem,health,requestid,otel,settings}.py`
-- Modify: `libs/py-common/pyproject.toml` dependencies: `fastapi`, `pydantic`, `pydantic-settings`, `python-ulid`, `prometheus-client`, `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-grpc`, `opentelemetry-instrumentation-fastapi`, `opentelemetry-instrumentation-httpx`, `opentelemetry-instrumentation-psycopg`, `httpx` (constraints per W1-T02)
+- Modify: `libs/py-common/pyproject.toml` `[project] dependencies`, exactly these eleven lines in this order (constraint rule of W1-T02 Step 6; resolved versions from `versions.yaml` on 2026-11-27; PG-24 D1): `fastapi>=0.165.0,<0.166`, `pydantic>=2.14.4,<3`, `pydantic-settings>=2.16.3,<3`, `python-ulid>=3.2.1,<4`, `prometheus-client>=0.26.0,<0.27`, `opentelemetry-sdk>=1.45.2,<2`, `opentelemetry-exporter-otlp-proto-grpc>=1.45.2,<2`, `opentelemetry-instrumentation-fastapi>=0.66b0,<0.67`, `opentelemetry-instrumentation-httpx>=0.66b0,<0.67`, `opentelemetry-instrumentation-psycopg>=0.66b0,<0.67`, `httpx>=0.29.0,<0.30`
 - Test: `libs/py-common/tests/test_ids.py`, `test_timeutil.py`, `test_logging.py`, `test_problem.py`, `test_health.py`, `test_requestid.py`
 
 **Interfaces:** Produces the W1-T07 rows of overview §3.1 exactly.
@@ -1901,8 +1912,10 @@ def test_trace_id_is_128_bit_hex() -> None:
 `libs/py-common/tests/test_timeutil.py`:
 
 ```python
-"""Verifies API-006, MCP-002 timestamp format."""
+"""Verifies API-006, MCP-002 timestamp format and PG-24 D6."""
 from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
 
 from rootline_common.timeutil import parse_rfc3339, to_rfc3339, utcnow
 
@@ -1924,6 +1937,16 @@ def test_to_rfc3339_converts_other_zones() -> None:
 
 def test_parse_roundtrip() -> None:
     assert parse_rfc3339("2026-11-30T09:05:07.123Z") == datetime(2026, 11, 30, 9, 5, 7, 123000, tzinfo=UTC)
+
+
+def test_to_rfc3339_rejects_naive() -> None:
+    with pytest.raises(ValueError, match=r"^naive datetime not allowed: 2026-11-30T09:05:07$"):
+        to_rfc3339(datetime(2026, 11, 30, 9, 5, 7))
+
+
+def test_parse_rejects_missing_offset() -> None:
+    with pytest.raises(ValueError, match=r"^naive datetime not allowed: 2026-11-30T09:05:07$"):
+        parse_rfc3339("2026-11-30T09:05:07")
 ```
 
 `libs/py-common/tests/test_logging.py`:
@@ -1954,12 +1977,26 @@ def test_json_log_line(capsys) -> None:
 `libs/py-common/tests/test_problem.py`:
 
 ```python
-"""Verifies API-002."""
+"""Verifies API-002, API-004 (request ID on 500) and PG-24 D2, D3, D5."""
+import json
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException
 
-from rootline_common.problem import PROBLEM_CODES, Problem, install_problem_handlers
+from rootline_common.ids import is_ulid
+from rootline_common.logging import configure_logging
+from rootline_common.problem import (
+    HTTP_STATUS_PROBLEMS,
+    PROBLEM_CODES,
+    Problem,
+    install_problem_handlers,
+)
+from rootline_common.requestid import RequestIdMiddleware
+
+RID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 
 def make_app() -> FastAPI:
@@ -1974,18 +2011,37 @@ def make_app() -> FastAPI:
         raise Problem("invalid_transition", 409, "Invalid transition", "queued -> merged")
 
     @app.post("/validate")
-    def validate(body: Body) -> dict:
+    def validate(body: Body) -> dict[str, object]:
         return {}
 
     @app.get("/crash")
     def crash() -> None:
         raise RuntimeError("secret detail")
 
+    @app.get("/auth")
+    def auth() -> None:
+        raise HTTPException(401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+
+    @app.get("/teapot")
+    def teapot() -> None:
+        raise HTTPException(418, detail="teapot detail")
+
+    @app.get("/extra")
+    def extra() -> None:
+        raise Problem("conflict", 409, "Conflict", "key reused",
+                      extra={"status": 200, "code": "x", "request_id": "y", "hint": "h"})
+
+    return app
+
+
+def make_app_with_request_id() -> FastAPI:
+    app = make_app()
+    app.add_middleware(RequestIdMiddleware)
     return app
 
 
 def test_problem_shape() -> None:
-    r = TestClient(make_app()).get("/boom", headers={"X-Request-Id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
+    r = TestClient(make_app()).get("/boom", headers={"X-Request-Id": RID})
     assert r.status_code == 409
     assert r.headers["content-type"] == "application/problem+json"
     body = r.json()
@@ -2006,21 +2062,86 @@ def test_internal_error_hides_detail() -> None:
     assert "secret detail" not in r.text
 
 
+def test_internal_error_carries_incoming_request_id(capsys: pytest.CaptureFixture[str]) -> None:
+    """PG-24 D2: header, body request_id, incoming X-Request-Id and the log line agree."""
+    configure_logging("test", "INFO")
+    c = TestClient(make_app_with_request_id(), raise_server_exceptions=False)
+    r = c.get("/crash", headers={"X-Request-Id": RID})
+    assert r.status_code == 500
+    assert r.headers.get_list("x-request-id") == [RID]
+    assert r.json()["request_id"] == RID
+    lines = [json.loads(x) for x in capsys.readouterr().out.splitlines() if x.startswith("{")]
+    assert [x["request_id"] for x in lines if x["logger"] == "rootline.problem"] == [RID]
+
+
+def test_internal_error_generated_request_id_matches() -> None:
+    c = TestClient(make_app_with_request_id(), raise_server_exceptions=False)
+    r = c.get("/crash")
+    assert r.headers.get_list("x-request-id") == [r.json()["request_id"]]
+    assert is_ulid(r.json()["request_id"])
+
+
+def test_not_found_is_problem() -> None:
+    r = TestClient(make_app_with_request_id()).get("/nope", headers={"X-Request-Id": RID})
+    assert r.status_code == 404 and r.headers["content-type"] == "application/problem+json"
+    assert r.json() == {"type": "https://rootline.dev/problems/not_found", "title": "Not found",
+                        "status": 404, "detail": "Not Found", "instance": "/nope",
+                        "code": "not_found", "request_id": RID}
+    assert r.headers.get_list("x-request-id") == [RID]
+
+
+def test_method_not_allowed_keeps_allow_header() -> None:
+    r = TestClient(make_app()).post("/boom")
+    assert r.status_code == 405 and r.headers["allow"] == "GET"
+    assert (r.json()["code"], r.json()["title"]) == ("method_not_allowed", "Method not allowed")
+
+
+def test_http_401_maps_to_unauthenticated_and_keeps_headers() -> None:
+    r = TestClient(make_app()).get("/auth")
+    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+    body = r.json()
+    assert (body["code"], body["title"], body["detail"]) == ("unauthenticated", "Unauthenticated",
+                                                             "Not authenticated")
+
+
+def test_unmapped_http_status_is_internal_with_status_kept() -> None:
+    r = TestClient(make_app()).get("/teapot")
+    assert r.status_code == 418 and r.headers["content-type"] == "application/problem+json"
+    body = r.json()
+    assert (body["status"], body["code"], body["title"], body["detail"]) == (
+        418, "internal", "Internal error", "unexpected error")
+    assert "teapot detail" not in r.text
+
+
+def test_reserved_extra_keys_are_dropped() -> None:
+    r = TestClient(make_app()).get("/extra", headers={"X-Request-Id": RID})
+    body = r.json()
+    assert r.status_code == 409
+    assert (body["status"], body["code"], body["hint"]) == (409, "conflict", "h")
+    assert body["request_id"] != "y"
+    assert Problem("conflict", 409, "Conflict", extra={"title": "x", "hint": "h"}).extra == {"hint": "h"}
+
+
 def test_codes_table() -> None:
     assert PROBLEM_CODES == {
         "unauthenticated": 401, "insufficient_user_authentication": 401, "forbidden": 403,
-        "not_found": 404, "validation_error": 422, "invalid_transition": 409, "conflict": 409,
-        "separation_of_duties": 403, "rate_limited": 429, "lab_busy": 409, "internal": 500}
+        "not_found": 404, "method_not_allowed": 405, "validation_error": 422,
+        "invalid_transition": 409, "conflict": 409, "separation_of_duties": 403,
+        "rate_limited": 429, "lab_busy": 409, "internal": 500}
+    assert HTTP_STATUS_PROBLEMS == {
+        401: ("unauthenticated", "Unauthenticated"), 403: ("forbidden", "Forbidden"),
+        404: ("not_found", "Not found"), 405: ("method_not_allowed", "Method not allowed")}
+    assert all(PROBLEM_CODES[code] == status for status, (code, _) in HTTP_STATUS_PROBLEMS.items())
 ```
 
 `libs/py-common/tests/test_health.py`:
 
 ```python
-"""Verifies ARC-020."""
+"""Verifies ARC-020 and PG-24 D7."""
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from rootline_common.health import make_health_router
+from rootline_common.health import make_health_router, make_metrics_route
 
 
 async def ok() -> bool:
@@ -2048,18 +2169,37 @@ def test_check_exception_counts_as_failing() -> None:
     app = FastAPI()
     app.include_router(make_health_router({"db": boom}))
     assert TestClient(app).get("/readyz").json() == {"failing": ["db"]}
+
+
+def test_health_router_serves_metrics_once() -> None:
+    """PG-24 D7: make_health_router mounts /metrics itself, exactly once."""
+    paths = [getattr(r, "path", None) for r in make_health_router({}).routes]
+    assert sorted(p for p in paths if p) == ["/healthz", "/metrics", "/readyz"]
+
+
+def test_metrics_route_standalone() -> None:
+    app = FastAPI()
+    app.router.routes.append(make_metrics_route())
+    r = TestClient(app).get("/metrics")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
 ```
 
 `libs/py-common/tests/test_requestid.py`:
 
 ```python
-"""Verifies API-004."""
-from fastapi import FastAPI
+"""Verifies API-004 and PG-24 D2, D4."""
+import asyncio
+
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.types import Message, Receive, Scope, Send
 
 from rootline_common.ids import is_ulid
 from rootline_common.logging import request_id_var
 from rootline_common.requestid import RequestIdMiddleware
+
+RID_A = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+RID_B = "01BX5ZZKBKACTAV9WEVGEMMVRZ"
 
 
 def make() -> TestClient:
@@ -2067,20 +2207,52 @@ def make() -> TestClient:
     app.add_middleware(RequestIdMiddleware)
 
     @app.get("/x")
-    def x() -> dict:
-        return {"rid": request_id_var.get()}
+    def x(request: Request) -> dict[str, object]:
+        return {"rid": request_id_var.get(), "state": request.state.request_id}
 
     return TestClient(app)
 
 
+def call_raw(headers: list[tuple[bytes, bytes]]) -> tuple[list[Message], Scope]:
+    """Drive the middleware with a raw ASGI scope (bytes headers, no client re-encoding)."""
+    sent: list[Message] = []
+    scope: Scope = {"type": "http", "method": "GET", "path": "/", "headers": headers}
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    asyncio.run(RequestIdMiddleware(app)(scope, receive, send))
+    return sent, scope
+
+
 def test_valid_incoming_id_is_kept() -> None:
-    r = make().get("/x", headers={"X-Request-Id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"})
-    assert r.headers["X-Request-Id"] == "01ARZ3NDEKTSV4RRFFQ69G5FAV" == r.json()["rid"]
+    r = make().get("/x", headers={"X-Request-Id": RID_A})
+    assert r.headers["X-Request-Id"] == RID_A == r.json()["rid"] == r.json()["state"]
 
 
 def test_invalid_incoming_id_is_replaced() -> None:
     r = make().get("/x", headers={"X-Request-Id": "abc"})
     assert r.headers["X-Request-Id"] != "abc" and is_ulid(r.headers["X-Request-Id"])
+    assert r.json()["state"] == r.headers["X-Request-Id"]
+
+
+def test_non_utf8_incoming_id_is_replaced() -> None:
+    sent, scope = call_raw([(b"x-request-id", b"\xff\xfe01ARZ3NDEKTSV4RRFFQ69G5F")])
+    rid = dict(sent[0]["headers"])[b"x-request-id"].decode()
+    assert is_ulid(rid) and scope["state"]["request_id"] == rid
+
+
+def test_first_incoming_header_wins() -> None:
+    sent, scope = call_raw([(b"x-request-id", RID_A.encode()), (b"x-request-id", RID_B.encode())])
+    assert dict(sent[0]["headers"])[b"x-request-id"] == RID_A.encode()
+    assert scope["state"]["request_id"] == RID_A
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -2115,7 +2287,7 @@ def ulid_to_trace_id(ulid: str) -> str:
 `timeutil.py`:
 
 ```python
-"""Time helpers: RFC 3339 UTC with Z (API-006, MCP-002)."""
+"""Time helpers: RFC 3339 UTC with Z (API-006, MCP-002, PG-24)."""
 from datetime import UTC, datetime
 
 
@@ -2124,13 +2296,18 @@ def utcnow() -> datetime:
 
 
 def to_rfc3339(dt: datetime, *, ms: bool = True) -> str:
+    if dt.utcoffset() is None:
+        raise ValueError(f"naive datetime not allowed: {dt.isoformat()}")
     dt = dt.astimezone(UTC)
     base = dt.strftime("%Y-%m-%dT%H:%M:%S")
     return f"{base}.{dt.microsecond // 1000:03d}Z" if ms else f"{base}Z"
 
 
 def parse_rfc3339(text: str) -> datetime:
-    return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(UTC)
+    dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if dt.utcoffset() is None:
+        raise ValueError(f"naive datetime not allowed: {text}")
+    return dt.astimezone(UTC)
 ```
 
 `logging.py`:
@@ -2192,25 +2369,41 @@ def configure_logging(component: str, level: str = "INFO") -> None:
 `problem.py`:
 
 ```python
-"""RFC 9457 problem+json (API-002)."""
+"""RFC 9457 problem+json (API-002, PG-24)."""
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from rootline_common.ids import new_ulid
 from rootline_common.logging import request_id_var
 
 PROBLEM_CODES: dict[str, int] = {
     "unauthenticated": 401, "insufficient_user_authentication": 401, "forbidden": 403,
-    "not_found": 404, "validation_error": 422, "invalid_transition": 409, "conflict": 409,
-    "separation_of_duties": 403, "rate_limited": 429, "lab_busy": 409, "internal": 500,
+    "not_found": 404, "method_not_allowed": 405, "validation_error": 422,
+    "invalid_transition": 409, "conflict": 409, "separation_of_duties": 403,
+    "rate_limited": 429, "lab_busy": 409, "internal": 500,
 }
+# HTTPException status -> (code, title) (PG-24 D3). Any other status: code "internal", status kept.
+HTTP_STATUS_PROBLEMS: dict[int, tuple[str, str]] = {
+    401: ("unauthenticated", "Unauthenticated"),
+    403: ("forbidden", "Forbidden"),
+    404: ("not_found", "Not found"),
+    405: ("method_not_allowed", "Method not allowed"),
+}
+# Body keys that `extra` can never set (PG-24 D5); they are dropped silently.
+RESERVED_PROBLEM_KEYS: frozenset[str] = frozenset(
+    {"type", "title", "status", "detail", "instance", "code", "request_id"})
 log = logging.getLogger("rootline.problem")
+
+
+def _clean(extra: dict[str, Any] | None) -> dict[str, Any]:
+    return {k: v for k, v in (extra or {}).items() if k not in RESERVED_PROBLEM_KEYS}
 
 
 class Problem(Exception):
@@ -2218,14 +2411,23 @@ class Problem(Exception):
                  extra: dict[str, Any] | None = None, headers: dict[str, str] | None = None) -> None:
         super().__init__(detail or title)
         self.code, self.status, self.title, self.detail = code, status, title, detail[:500]
-        self.extra, self.headers = extra or {}, headers or {}
+        self.extra, self.headers = _clean(extra), headers or {}
+
+
+def _request_id(request: Request) -> str:
+    """scope["state"]["request_id"] (RequestIdMiddleware), else request_id_var, else a new ULID (PG-24 D2)."""
+    state = request.scope.get("state")
+    rid = state.get("request_id") if isinstance(state, dict) else None
+    if isinstance(rid, str) and rid:
+        return rid
+    return request_id_var.get() or new_ulid()
 
 
 def _body(request: Request, code: str, status: int, title: str, detail: str,
-          extra: dict[str, Any] | None = None) -> dict[str, Any]:
+          extra: dict[str, Any] | None = None, request_id: str | None = None) -> dict[str, Any]:
     return {"type": f"https://rootline.dev/problems/{code}", "title": title, "status": status,
             "detail": detail, "instance": request.url.path, "code": code,
-            "request_id": request_id_var.get() or new_ulid(), **(extra or {})}
+            "request_id": request_id or _request_id(request), **_clean(extra)}
 
 
 def _resp(body: dict[str, Any], headers: dict[str, str] | None = None) -> JSONResponse:
@@ -2238,6 +2440,20 @@ def install_problem_handlers(app: FastAPI) -> None:
     async def _problem(request: Request, exc: Problem) -> JSONResponse:
         return _resp(_body(request, exc.code, exc.status, exc.title, exc.detail, exc.extra), exc.headers)
 
+    @app.exception_handler(HTTPException)
+    async def _http(request: Request, exc: HTTPException) -> Response:
+        headers = dict(exc.headers) if exc.headers else None
+        if exc.status_code in (204, 304):  # no body allowed (RFC 9110 §15.3.5, §15.4.5)
+            return Response(status_code=exc.status_code, headers=headers)
+        mapped = HTTP_STATUS_PROBLEMS.get(exc.status_code)
+        if mapped is None:
+            log.warning("unmapped HTTPException status %d", exc.status_code)
+            body = _body(request, "internal", exc.status_code, "Internal error", "unexpected error")
+        else:
+            detail = exc.detail[:500] if isinstance(exc.detail, str) else ""
+            body = _body(request, mapped[0], exc.status_code, mapped[1], detail)
+        return _resp(body, headers)
+
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         errors = [{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()]
@@ -2246,19 +2462,37 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _internal(request: Request, exc: Exception) -> JSONResponse:
-        log.exception("unhandled error")
-        return _resp(_body(request, "internal", 500, "Internal error", "unexpected error"))
+        # Runs in ServerErrorMiddleware, outside RequestIdMiddleware: request_id_var is already
+        # reset and the response bypasses the middleware's send wrapper (PG-24 D2).
+        rid = _request_id(request)
+        token = request_id_var.set(rid)
+        try:
+            log.error("unhandled error", exc_info=exc)
+        finally:
+            request_id_var.reset(token)
+        return _resp(_body(request, "internal", 500, "Internal error", "unexpected error", request_id=rid),
+                     {"X-Request-Id": rid})
 ```
 
 `health.py`:
 
 ```python
-"""/healthz, /readyz, /metrics (ARC-020)."""
+"""/healthz, /readyz, /metrics (ARC-020, PG-24 D7)."""
 from collections.abc import Awaitable, Callable, Mapping
 
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+
+async def _metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+def make_metrics_route() -> APIRoute:
+    """`GET /metrics` alone, for an app that does not include make_health_router (PG-24 D7)."""
+    return APIRoute("/metrics", _metrics, methods=["GET"], include_in_schema=False)
 
 
 def make_health_router(checks: Mapping[str, Callable[[], Awaitable[bool]]]) -> APIRouter:
@@ -2281,17 +2515,14 @@ def make_health_router(checks: Mapping[str, Callable[[], Awaitable[bool]]]) -> A
         return JSONResponse({"failing": failing} if failing else {"status": "ready"},
                             status_code=503 if failing else 200)
 
-    @router.get("/metrics", include_in_schema=False)
-    async def metrics() -> Response:
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
+    router.routes.append(make_metrics_route())  # /metrics is part of the health router (PG-24 D7)
     return router
 ```
 
 `requestid.py`:
 
 ```python
-"""X-Request-Id handling (API-004)."""
+"""X-Request-Id handling (API-004, PG-24)."""
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from rootline_common.ids import is_ulid, new_ulid
@@ -2306,8 +2537,11 @@ class RequestIdMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        incoming = dict(scope["headers"]).get(b"x-request-id", b"").decode()
+        # First x-request-id header; latin-1 never fails to decode (Starlette header encoding, PG-24 D4).
+        raw = next((v for k, v in scope["headers"] if k == b"x-request-id"), b"")
+        incoming = raw.decode("latin-1")
         rid = incoming if is_ulid(incoming) else new_ulid()
+        scope.setdefault("state", {})["request_id"] = rid  # read by the 500 handler (PG-24 D2)
         token = request_id_var.set(rid)
 
         async def send_with_id(message: Message) -> None:
