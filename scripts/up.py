@@ -7,16 +7,21 @@ Steps, in order, each printing `==> <step>`:
      `infra/k3d/rootline.generated.yaml` from `infra/k3d/rootline.yaml` (`<versions.k3s>` -> the `k3s` row of
      `versions.yaml` with `+` replaced by `-`; `<repo>` -> the absolute repository path) and run
      `k3d cluster create --config infra/k3d/rootline.generated.yaml`.
-  2. `scripts/build_images.py --tag dev --import-k3d rootline`.
-  3. Helm release `argocd` (chart `argo/argo-cd` at the `chart` of the `argo-cd` row of `versions.yaml`) in
+  2. Node DNS search list (PG-28, ADR 0047 E1), on every run: `fix_node_dns()` removes the `search` and
+     `domain` lines from `/etc/resolv.conf` of the k3d node container, so pods do not resolve `github.com`
+     through a workstation DNS suffix with a wildcard record.
+  3. `scripts/build_images.py --tag dev --import-k3d rootline`.
+  4. Helm release `argocd` (chart `argo/argo-cd` at the `chart` of the `argo-cd` row of `versions.yaml`) in
      namespace `argocd` with `deploy/upstream/argo-cd/values-local.yaml`, `--wait --timeout 10m`.
-  4. `scripts/secrets_local.py`.
-  5. Application `root` (project `default`, source `deploy/root` at `--revision`, parameters `env=local`,
-     `domain=127.0.0.1.sslip.io`, `targetRevision=<--revision>`, automated sync with prune and selfHeal).
-  6. `scripts/wait_apps.py --timeout <--timeout>`; on timeout the unhealthy names and
+  5. `scripts/secrets_local.py`.
+  6. Application `root` (project `default`, source `deploy/root` at `--revision`, parameters `env=local`,
+     `domain=127.0.0.1.sslip.io`, `targetRevision=<--revision>`, `ignoreDifferences` for the finalizers of
+     child Applications, automated sync with prune and selfHeal, `RespectIgnoreDifferences=true`, retry
+     `SYNC_RETRY`; ADR 0047 D2 and D3).
+  7. `scripts/wait_apps.py --timeout <--timeout>`; on timeout the unhealthy names and
      `kubectl -n argocd get applications` are printed.
-  7. Print the ArgoCD admin password and URL.
-  8. Print `memory_requests_total` (the `scripts/doctor.py` memory check).
+  8. Print the ArgoCD admin password and URL.
+  9. Print `memory_requests_total` (the `scripts/doctor.py` memory check).
 
 Exit codes: 0 every step succeeded; 1 a step failed (message on stderr) or an Application is not
 Synced/Healthy.
@@ -27,6 +32,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -46,7 +52,14 @@ CONTEXT = "k3d-rootline"
 DOMAIN = "127.0.0.1.sslip.io"
 TEMPLATE = REPO / "infra/k3d/rootline.yaml"
 GENERATED = REPO / "infra/k3d/rootline.generated.yaml"
-ARGOCD_REPO_URL = "https://argoproj.github.io/argo-helm"
+NODE = "k3d-rootline-server-0"  # the only kubelet node of INF-030 (servers: 1, agents: 0)
+CMD_TIMEOUT_S = 60
+# ADR 0047 D2: equal to the `retry` block of deploy/root/templates/apps.yaml (tests/repo/test_root_chart.py).
+SYNC_RETRY: dict[str, Any] = {"limit": 10, "backoff": {"duration": "10s", "factor": 2, "maxDuration": "3m"}}
+# ADR 0047 D3: ArgoCD adds PreDelete finalizers to child Applications; `root` must not report them as drift.
+ROOT_IGNORE_DIFFERENCES: list[dict[str, Any]] = [
+    {"group": "argoproj.io", "kind": "Application", "jsonPointers": ["/metadata/finalizers"]}
+]
 
 
 class StepError(Exception):
@@ -82,7 +95,12 @@ def root_application(*, repo_url: str, revision: str, domain: str) -> dict[str, 
                     ]
                 },
             },
-            "syncPolicy": {"automated": {"prune": True, "selfHeal": True}},
+            "ignoreDifferences": ROOT_IGNORE_DIFFERENCES,
+            "syncPolicy": {
+                "automated": {"prune": True, "selfHeal": True},
+                "syncOptions": ["RespectIgnoreDifferences=true"],
+                "retry": SYNC_RETRY,
+            },
         },
     }
 
@@ -91,6 +109,53 @@ def application_names(rendered: str) -> list[str]:
     return [
         d["metadata"]["name"] for d in yaml.safe_load_all(rendered) if d and d.get("kind") == "Application"
     ]
+
+
+def strip_search_lines(text: str) -> str:
+    """Drop every `search` and `domain` line of a resolv.conf; keep every other line and line ending."""
+    kept = [
+        line for line in text.splitlines(keepends=True) if line.split()[:1] not in (["search"], ["domain"])
+    ]
+    return "".join(kept)
+
+
+def _node_run(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    try:
+        return run(cmd, check=False, timeout=CMD_TIMEOUT_S, input_text=input_text)
+    except subprocess.TimeoutExpired as error:
+        raise StepError(f"{' '.join(cmd)} timed out after {CMD_TIMEOUT_S} s") from error
+
+
+def _node_run_ok(cmd: list[str], input_text: str | None = None) -> str:
+    result = _node_run(cmd, input_text)
+    if result.returncode != 0:
+        raise StepError(f"{' '.join(cmd)} exited {result.returncode}: {result.stderr.strip()}")
+    return result.stdout
+
+
+def fix_node_dns(node: str = NODE, context: str = CONTEXT) -> bool:
+    """ADR 0047 E1: remove `search` and `domain` lines from the node's /etc/resolv.conf; True when changed.
+
+    On a changed file, ArgoCD workloads of an already existing cluster are restarted so they get a clean
+    list; a new cluster has no namespace `argocd` yet and its pods are created after this step.
+    """
+    read = ["docker", "exec", node, "cat", "/etc/resolv.conf"]
+    text = _node_run_ok(read)
+    cleaned = strip_search_lines(text)
+    if cleaned == text:
+        print(f"node DNS: {node} has no search or domain line")
+        return False
+    _node_run_ok(["docker", "exec", "-i", node, "sh", "-c", "cat > /etc/resolv.conf"], input_text=cleaned)
+    reread = _node_run_ok(read)
+    if strip_search_lines(reread) != reread:
+        raise StepError(f"node DNS: search or domain line still present in {node}:/etc/resolv.conf")
+    print(f"node DNS: removed search and domain lines from {node}:/etc/resolv.conf")
+    exists = _node_run(["kubectl", "--context", context, "get", "namespace", "argocd", "-o", "name"])
+    if exists.returncode == 0:
+        for kind in ("deployment", "statefulset"):
+            _node_run_ok(["kubectl", "--context", context, "-n", "argocd", "rollout", "restart", kind])
+        print("node DNS: restarted deployments and statefulsets in namespace argocd")
+    return True
 
 
 def sh(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> str:
@@ -114,6 +179,11 @@ def step_cluster(versions: dict[str, Any]) -> None:
         render_k3d_config(TEMPLATE.read_text(encoding="utf-8"), versions["k3s"], str(REPO)), encoding="utf-8"
     )
     stream(["k3d", "cluster", "create", "--config", str(GENERATED)], timeout=900)
+
+
+def step_node_dns() -> None:
+    print("==> node DNS search list", flush=True)
+    fix_node_dns()
 
 
 def step_images() -> None:
@@ -185,6 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     versions = yaml.safe_load((REPO / "versions.yaml").read_text(encoding="utf-8"))
     try:
         step_cluster(versions)
+        step_node_dns()
         step_images()
         step_argocd(versions)
         step_secrets()

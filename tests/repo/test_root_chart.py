@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from scripts.proc import run
+from scripts.up import SYNC_RETRY
 
 REPO = Path(__file__).resolve().parents[2]
 ENVS = ["local", "gke", "ci"]
@@ -41,6 +42,7 @@ def test_waves_and_sync_policy(env: str) -> None:
     assert apps["rootline"]["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"] == "1"
     for name, a in apps.items():
         sp = a["spec"]["syncPolicy"]
+        assert sp["retry"] == SYNC_RETRY, name  # ADR 0047 D2, INF-021
         if name == "workload":
             assert sp["automated"] == {"prune": True, "selfHeal": False}
             # W2-T08 tightens this to == "rootline-workload" when the AppProject exists.
@@ -48,6 +50,56 @@ def test_waves_and_sync_policy(env: str) -> None:
         else:
             assert sp["automated"] == {"prune": True, "selfHeal": True}
             assert sp["syncOptions"] == ["CreateNamespace=false", "ServerSideApply=true"]
+
+
+EXPECTED_NAMESPACES = {
+    "namespaces": "argocd",
+    "gateway-api-crds": "argocd",
+    "cert-manager": "cert-manager",
+    "external-secrets": "external-secrets",
+    "cnpg-operator": "cnpg-system",
+    "kyverno": "kyverno",
+    "chaos-mesh": "chaos-mesh",
+    "prometheus-crds": "observability",
+    "traefik": "traefik",
+    "platform-config": "argocd",
+    "postgres": "rootline-data",
+    "observability": "observability",
+    "keycloak": "keycloak",
+    "argocd-accounts": "argocd",
+    "rootline": "rootline",
+    "workload": "shop",
+    "demo-seed": "rootline",
+}
+
+
+@pytest.mark.parametrize("env", ENVS)
+def test_application_namespaces(env: str) -> None:
+    """INF-020, ADR 0047 D1: every Application has the destination namespace of the table."""
+    for app in render(env):
+        name = app["metadata"]["name"]
+        assert app["spec"]["destination"]["namespace"] == EXPECTED_NAMESPACES[name], (env, name)
+    values = yaml.safe_load((REPO / "deploy/root/values.yaml").read_text())
+    assert set(values["apps"]) <= set(EXPECTED_NAMESPACES)
+
+
+def test_missing_namespace_fails() -> None:
+    """INF-020, ADR 0047 D1: a missing `namespace` key is a render error, not a silent default."""
+    result = run(
+        [
+            "helm",
+            "template",
+            "root",
+            str(REPO / "deploy/root"),
+            "--set",
+            "env=local",
+            "--set",
+            "apps.observability.namespace=null",
+        ],
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "deploy/root/values.yaml apps.observability has no namespace" in result.stderr
 
 
 def test_env_filters() -> None:
@@ -151,6 +203,7 @@ def test_apps_contract_matches_plan() -> None:
         "ingressIP": "",
     }
     for name, app in values["apps"].items():
+        assert isinstance(app.get("namespace"), str) and app["namespace"], name  # ADR 0047 D1
         assert "repo" not in app, name
         assert "chartVersion" not in app, name
     assert values["apps"]["prometheus-crds"] == {

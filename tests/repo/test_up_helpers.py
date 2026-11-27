@@ -2,6 +2,7 @@
 
 import base64
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -119,7 +120,7 @@ def test_cluster_exists_parses_k3d_json() -> None:
 
 
 def test_root_application_manifest() -> None:
-    """INF-020: Application `root` in project default with automated prune and selfHeal."""
+    """INF-020, INF-021, ADR 0047 D2 and D3: Application `root` ignores child finalizers and retries."""
     app = up.root_application(
         repo_url="git@github.com:arkhash0309/rootline.git", revision="develop", domain="127.0.0.1.sslip.io"
     )
@@ -133,7 +134,14 @@ def test_root_application_manifest() -> None:
         {"name": "domain", "value": "127.0.0.1.sslip.io"},
         {"name": "targetRevision", "value": "develop"},
     ]
-    assert spec["syncPolicy"]["automated"] == {"prune": True, "selfHeal": True}
+    assert spec["ignoreDifferences"] == [
+        {"group": "argoproj.io", "kind": "Application", "jsonPointers": ["/metadata/finalizers"]}
+    ]
+    assert spec["syncPolicy"] == {
+        "automated": {"prune": True, "selfHeal": True},
+        "syncOptions": ["RespectIgnoreDifferences=true"],
+        "retry": {"limit": 10, "backoff": {"duration": "10s", "factor": 2, "maxDuration": "3m"}},
+    }
     assert spec["destination"] == {"server": "https://kubernetes.default.svc", "namespace": "argocd"}
 
 
@@ -313,3 +321,78 @@ def test_platform_smoke_lists_every_local_application() -> None:
     assert sorted(c["app"] for c in smoke["checks"]) == enabled
     assert {c["kind"] for c in smoke["checks"]} == {"argocd_app"}
     assert {c["expect"] for c in smoke["checks"]} == {"Synced/Healthy"}
+
+
+NODE_CAT = ["docker", "exec", "k3d-rootline-server-0", "cat", "/etc/resolv.conf"]
+NODE_WRITE = ["docker", "exec", "-i", "k3d-rootline-server-0", "sh", "-c", "cat > /etc/resolv.conf"]
+NS_GET = ["kubectl", "--context", "k3d-rootline", "get", "namespace", "argocd", "-o", "name"]
+RESTART = ["kubectl", "--context", "k3d-rootline", "-n", "argocd", "rollout", "restart"]
+DIRTY = "nameserver 172.23.0.1\nsearch codegen.net\n"
+CLEAN = "nameserver 172.23.0.1\n"
+
+
+def _fake_run(
+    monkeypatch: pytest.MonkeyPatch, answers: list[tuple[int, str]]
+) -> list[tuple[list[str], str | None]]:
+    """Replace `scripts.up.run`; every call returns the next (returncode, stdout) answer, in order."""
+    calls: list[tuple[list[str], str | None]] = []
+    queue = iter(answers)
+
+    def fake(
+        cmd: list[str],
+        *,
+        check: bool = True,
+        capture: bool = True,
+        env: Any = None,
+        timeout: int = 600,
+        input_text: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((cmd, input_text))
+        code, out = next(queue)
+        return subprocess.CompletedProcess(cmd, code, out, "")
+
+    monkeypatch.setattr(up, "run", fake)
+    return calls
+
+
+def test_strip_search_lines() -> None:
+    """INF-030, ADR 0047 E1: only `search` and `domain` lines are removed."""
+    assert up.strip_search_lines(DIRTY + "options ndots:0\n") == CLEAN + "options ndots:0\n"
+    assert up.strip_search_lines("domain corp.example\nnameserver 10.0.0.1\n") == "nameserver 10.0.0.1\n"
+    assert up.strip_search_lines("search a b\n") == ""
+    for unchanged in ("# search x\n\nnameserver 1.1.1.1", "searchx a\n", ""):
+        assert up.strip_search_lines(unchanged) == unchanged
+
+
+def test_fix_node_dns_no_search_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """INF-030, ADR 0047 E1: a clean file is read once and left alone."""
+    calls = _fake_run(monkeypatch, [(0, CLEAN)])
+    assert up.fix_node_dns() is False
+    assert [c for c, _ in calls] == [NODE_CAT]
+
+
+def test_fix_node_dns_new_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
+    """INF-030, ADR 0047 E1: write through `cat >`, re-read, no restart when namespace argocd is absent."""
+    calls = _fake_run(monkeypatch, [(0, DIRTY), (0, ""), (0, CLEAN), (1, "")])
+    assert up.fix_node_dns() is True
+    assert calls == [(NODE_CAT, None), (NODE_WRITE, CLEAN), (NODE_CAT, None), (NS_GET, None)]
+
+
+def test_fix_node_dns_existing_argocd(monkeypatch: pytest.MonkeyPatch) -> None:
+    """INF-030, ADR 0047 E1: ArgoCD deployments and statefulsets restart when the namespace exists."""
+    calls = _fake_run(
+        monkeypatch, [(0, DIRTY), (0, ""), (0, CLEAN), (0, "namespace/argocd"), (0, ""), (0, "")]
+    )
+    assert up.fix_node_dns() is True
+    assert [c for c, _ in calls][-3:] == [NS_GET, [*RESTART, "deployment"], [*RESTART, "statefulset"]]
+
+
+def test_fix_node_dns_write_not_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    """INF-030, ADR 0047 E1: a re-read that still has a search line is an error."""
+    _fake_run(monkeypatch, [(0, DIRTY), (0, ""), (0, DIRTY)])
+    with pytest.raises(up.StepError) as error:
+        up.fix_node_dns()
+    assert (
+        str(error.value)
+        == "node DNS: search or domain line still present in k3d-rootline-server-0:/etc/resolv.conf"
+    )
