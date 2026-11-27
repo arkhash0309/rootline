@@ -3313,6 +3313,8 @@ In `rootline`: commit `deploy/upstream/otel-demo/values.yaml`, `scripts/`, tests
 
 > **Amended 2026-11-27 after the W1-T10 review of `feat/w1-gitops-root` at `2bc66d5`, per PG-27 (overview §5; ADR 0046 `wiki/adr/0046-w1-t10-t11-review-decisions.md`).** Changed, with the ADR 0046 item in brackets: the root values block (`prometheus-crds` uses `versionKey: prometheus-operator-crds`, no overrides; T1); Step 1 (the added required tests); Step 2 (`gateway.enabled: false`, `ports.websecure.http.tls.enabled`, T9; `.gitignore` belongs to W1-T12, T6); Step 3 (`upstream` values path from `versionKey` and `required`, T2; `gateway-api` `targetRevision: v{{ $v }}`, T3); Step 4 (`observability` PSS `privileged` with `warn`/`audit` `baseline`, O3 item 1); Step 5 rows `gateway.yaml` (listener ports 8000 and 8443, T9), `ca-configmap.yaml` (local/ci only, T5; image from the generated `files/versions.yaml`, T11) and `generators.yaml` (four namespaces, T4); Step 6 (`tpl` in `rootline.image`, T10; no CPU values, T7); Step 8 (`--allow-missing` until W1-P3 integration step 3, T8). The items that depend on W1-T11 (T1 step 3, T8 item 3, T11 item 2) are applied only in "W1-P3 integration steps" step 3 under "Execution schedule" above; all others in the normal fix round.
 
+> **Amended 2026-11-27 after the W1-T12 bring-up (`feat/w1-task-up`, PR #30), per PG-28 (overview §5; ADR 0047 `wiki/adr/0047-w1-t12-bringup-decisions.md`).** Changed, with the ADR 0047 item in brackets: the root values block (every entry has an explicit `namespace`, D1); Step 3 `apps.yaml` (destination line with `required` and no default, D1; `syncPolicy.retry` on every Application, D2). W1-T10 is already merged; W1-T12 applies these changes to `deploy/root/values.yaml`, `deploy/root/templates/apps.yaml` and `tests/repo/test_root_chart.py` in its fix round ("Task W1-T12" Step 2b).
+
 **Files:**
 - Create: `infra/k3d/rootline.yaml`, `infra/k3d/manifests/traefik-config.yaml`
 - Create: `deploy/root/Chart.yaml`, `deploy/root/values.yaml`, `deploy/root/templates/_app.tpl`, `deploy/root/templates/apps.yaml`
@@ -3338,9 +3340,9 @@ gcpProject: ""
 k8sIssuer: https://kubernetes.default.svc.cluster.local
 artifactsBucket: ""
 ingressIP: ""
-apps:                           # every Application; later tasks flip enabled: true
-  namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces}
-  gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api}
+apps:                           # every Application; later tasks flip enabled: true; `namespace` is required (PG-28)
+  namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces, namespace: argocd}
+  gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api, namespace: argocd}
   cert-manager:      {enabled: true,  wave: -3, kind: upstream, versionKey: cert-manager, chart: cert-manager, namespace: cert-manager}
   external-secrets:  {enabled: true,  wave: -3, kind: upstream, versionKey: external-secrets, chart: external-secrets, namespace: external-secrets}
   cnpg-operator:     {enabled: true,  wave: -3, kind: upstream, versionKey: cloudnative-pg, chart: cloudnative-pg, namespace: cnpg-system}
@@ -3348,15 +3350,17 @@ apps:                           # every Application; later tasks flip enabled: t
   chaos-mesh:        {enabled: true,  wave: -3, kind: upstream, versionKey: chaos-mesh, chart: chaos-mesh, namespace: chaos-mesh, envs: [local]}
   prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability}
   traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
-  platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
-  postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
-  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability}
-  keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak}
-  argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts}
-  rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline}
-  workload:          {enabled: true,  wave: 2,  kind: env-repo, path: workload}
-  demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, envs: [gke]}
+  platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config, namespace: argocd}
+  postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres, namespace: rootline-data}
+  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability, namespace: observability}
+  keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak, namespace: keycloak}
+  argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts, namespace: argocd}
+  rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline, namespace: rootline}
+  workload:          {enabled: true,  wave: 2,  kind: env-repo, path: workload, namespace: shop}
+  demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, namespace: rootline, envs: [gke]}
 ```
+
+Every entry has a `namespace` key, which becomes `spec.destination.namespace`; `apps.yaml` has no default (spec INF-020, PG-28, ADR 0047 D1). The value is the namespace that receives the chart's namespaced objects that do not set `metadata.namespace`; it is `argocd` when every namespaced object of the chart sets its namespace or the chart has only cluster-scoped objects (`namespaces`, `gateway-api-crds`, `platform-config`, `argocd-accounts`).
 
 (`prometheus-crds` uses chart `prometheus-community/prometheus-operator-crds`; its `versions.yaml` key `prometheus-operator-crds` was resolved by W1-T02 and reaches `deploy/root/files/versions.yaml` when W1-T11 adds it to `CHART_KEYS` of `scripts/render_versions.py` (ADR 0046 T1). Until W1-P3 integration step 3, `feat/w1-gitops-root` carries the temporary overrides `repo: https://prometheus-community.github.io/helm-charts` and `chartVersion: "33.0.2"` on this entry; step 3 removes them, and no other entry may carry `repo` or `chartVersion`. `observability` is a local wrapper chart with upstream dependencies, created in W1-T11.)
 
@@ -3486,7 +3490,7 @@ spec:
   project: {{ if and (eq $app.kind "env-repo") (index $.Values.apps "argocd-accounts").enabled }}rootline-workload{{ else }}default{{ end }}
   destination:
     server: https://kubernetes.default.svc
-    namespace: {{ $app.namespace | default (ternary "shop" "argocd" (eq $app.kind "env-repo")) }}
+    namespace: {{ required (printf "deploy/root/values.yaml apps.%s has no namespace" $name) $app.namespace }}
   {{- if eq $app.kind "local-chart" }}
   source:
     repoURL: {{ $.Values.repoURL }}
@@ -3539,9 +3543,14 @@ spec:
     {{- if ne $app.kind "env-repo" }}
     syncOptions: [CreateNamespace=false, ServerSideApply=true]
     {{- end }}
+    retry:
+      limit: 10
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
 {{- end }}
 {{- end }}
 ```
+
+Destination and retry (PG-28, ADR 0047 D1 and D2): a missing `namespace` makes `helm template deploy/root` fail with `deploy/root/values.yaml apps.<name> has no namespace`. Every Application, `workload` included, gets `syncPolicy.retry` with delays 10, 20, 40, 80, 160 s, then 180 s five times (1210 s in total, longer than the 1200 s `scripts/wait_apps.py` waits in W1-T12 Step 3 item 7); the same object is `scripts.up.SYNC_RETRY` (W1-T12), and `tests/repo/test_root_chart.py` compares the two. A retry repeats a failed sync of the target revision and does not revert live drift, so `workload` keeps GEN-012.
 
 Values path and versions (ADR 0046 T2, T3): an `upstream` Application reads `$values/deploy/upstream/<versionKey>/values-<env>.yaml`, so `cnpg-operator` reads `deploy/upstream/cloudnative-pg/` and `prometheus-crds` reads `deploy/upstream/prometheus-operator-crds/` (no file; `ignoreMissingValueFiles: true`). `required` makes `helm template` fail with `deploy/root/files/versions.yaml has no key <key>` when the key is missing. `gateway-api` is a scalar in `versions.yaml` (`"1.7.0"`), and the Git tag is `v1.7.0`. On `feat/w1-gitops-root`, until W1-P3 integration step 3, the `upstream` branch keeps `index $versions $app.versionKey | default dict`, `{{ $app.repo | default $v.repo }}` and `{{ $app.chartVersion | default $v.chart | quote }}` for the `prometheus-crds` overrides (ADR 0046 T1); step 3 replaces them with the block above.
 
@@ -3877,19 +3886,34 @@ spec:
 
 ### Task W1-T12: `task up` bring-up and memory budget
 
-**Requirement IDs:** GEN-060 (`up`, `secrets:local`, `trust-ca`, `images`), S2, ARC-030, ARC-031, DB-001 (pgvector check), O-2, O-4.
+**Requirement IDs:** GEN-060 (`up`, `secrets:local`, `trust-ca`, `images`), S2, ARC-030, ARC-031, DB-001 (pgvector check), O-2, O-4, INF-020 (namespace rule), INF-021 (retry, Application `root`), INF-030 (node DNS), PG-28.
 **Depends on:** W1-T10, W1-T11, O-2, O-4. **Branch:** `feat/w1-task-up`.
 
 > **Amended 2026-11-27, per PG-27 (overview §5; ADR 0046 decisions T6, O3 item 3 and O4).** "Files" gains `.gitignore`; Step 3 item 1 names the `.gitignore` line; Step 5 gains the collector log-permission check and the Prometheus pod-label check.
+
+> **Amended 2026-11-27 after the first `task up` on `feat/w1-task-up` (PR #30, report commit `7281427`), per PG-28 (overview §5; ADR 0047 `wiki/adr/0047-w1-t12-bringup-decisions.md`).** Changed, with the ADR 0047 item in brackets: Requirement IDs; "Files" (root chart files, `tests/repo/test_root_chart.py`, `wiki/components/argocd.md`; D1, D2); "Interfaces" (`SYNC_RETRY`, `ROOT_IGNORE_DIFFERENCES`, `NODE`, `strip_search_lines`, `fix_node_dns`, `root_application`; D2, D3, E1); Step 1 (the required test table); new Step 2b (root chart fixes; D1, D2); Step 3 (new item 2, node DNS, E1; item 6, the fields of Application `root`, D2, D3; items renumbered 1 to 9); Step 5 (checks for D1, D2, D3 and E1); Step 7 (troubleshooting rows). The fix round on `feat/w1-task-up` applies all of them, then reruns Steps 4, 5 and 8; the scratch branch `fix/w1-t12-verify-scratch` is not merged and is deleted after the rerun. Defect D4 (`workload` path missing) is not changed: it closes when W1-T09 steps 6 and 7 run in W1-S3.
 
 **Files:**
 - Create: `scripts/up.py`, `scripts/secrets_local.py`, `scripts/trust_ca.py`, `scripts/build_images.py`, `scripts/wait_apps.py`
 - Modify: `wiki/runbooks/local-up.md`, `wiki/components/capacity.md`, `wiki/components/otel-collector.md` and `wiki/components/kube-prometheus-stack.md` (Step 5 results); `deploy/charts/observability/values.yaml` only in the Step 5 `DAC_READ_SEARCH` fallback
 - Modify: `.gitignore` — append, at the end of the file, exactly the two lines `# Generated k3d config (W1-T12, ADR 0046 T6)` and `infra/k3d/rootline.generated.yaml` (W1-S3 is sequential, so no `owns` list applies, overview §7.4)
-- Test: `tests/repo/test_up_helpers.py`
+- Modify (PG-28, Step 2b): `deploy/root/values.yaml` (a `namespace` key on every `apps` entry), `deploy/root/templates/apps.yaml` (destination line, `syncPolicy.retry`), `tests/repo/test_root_chart.py`; `wiki/components/argocd.md` (section "Defects found by W1-T12": column "Result" of D1, D2, D3 and the E1 paragraph state the PG-28 fix and the Step 5 result; sections "Interfaces" and "Configuration" list the `namespace` rule, the retry policy and the three fields of Application `root`)
+- Test: `tests/repo/test_up_helpers.py`, `tests/repo/test_root_chart.py`
 
 **Interfaces:**
 - Produces: `scripts.wait_apps.wait_all(context: str, timeout_s: int) -> list[str]` (returns names not Synced/Healthy); `scripts.secrets_local.build_bootstrap_secret(env: dict[str,str]) -> dict` (Secret manifest with every non-empty `.env.local` key except `DEPLOY_KEY_*`, `ROOTLINE_ENV_DIR`, `ROOTLINE_HOST_ANTHROPIC_API_KEY`, `HF_USER`); `scripts.secrets_local.repo_secret(name: str, url: str, key_pem: str) -> dict`; `scripts.build_images.SERVICES` (list of image names that have a `Dockerfile`).
+- Produces (PG-28, ADR 0047), all in `scripts/up.py`:
+
+| Name | Type or signature | Value or behaviour | Errors |
+|---|---|---|---|
+| `SYNC_RETRY` | `dict[str, Any]` constant | `{"limit": 10, "backoff": {"duration": "10s", "factor": 2, "maxDuration": "3m"}}`; equal to the `retry` block of `deploy/root/templates/apps.yaml` (D2) | none |
+| `ROOT_IGNORE_DIFFERENCES` | `list[dict[str, Any]]` constant | `[{"group": "argoproj.io", "kind": "Application", "jsonPointers": ["/metadata/finalizers"]}]` (D3) | none |
+| `NODE` | `str` constant | `"k3d-rootline-server-0"`, the only kubelet node of INF-030 (`servers: 1`, `agents: 0`) | none |
+| `root_application` | `(*, repo_url: str, revision: str, domain: str) -> dict[str, Any]` | the existing manifest plus `spec.ignoreDifferences = ROOT_IGNORE_DIFFERENCES` and `spec.syncPolicy = {"automated": {"prune": True, "selfHeal": True}, "syncOptions": ["RespectIgnoreDifferences=true"], "retry": SYNC_RETRY}` (D2, D3) | none (pure) |
+| `strip_search_lines` | `(text: str) -> str` | pure; splits with `str.splitlines(keepends=True)`, drops every line whose first whitespace-separated token is `search` or `domain`, joins the rest unchanged (comments, blank lines, other lines and their line endings kept, order kept) (E1) | none |
+| `fix_node_dns` | `(node: str = NODE, context: str = CONTEXT) -> bool` | Step 3 item 2 below; returns `True` when the file changed (E1) | `StepError("<command> exited <code>: <stderr>")` when a `docker exec` or `kubectl rollout restart` command exits non-zero; `StepError("<command> timed out after 60 s")` on `subprocess.TimeoutExpired`; `StepError("node DNS: search or domain line still present in <node>:/etc/resolv.conf")` when the re-read check fails. `kubectl get namespace argocd` exiting non-zero means "namespace absent" and is not an error |
+
+`scripts/e2e.py up` (W6-T09 Step 3) imports `fix_node_dns`, `ROOT_IGNORE_DIFFERENCES` and `SYNC_RETRY`.
 
 - [ ] **Step 1: Tests**
 
@@ -3916,17 +3940,37 @@ def test_repo_secret_shape() -> None:
                                "sshPrivateKey": "PEM"}
 ```
 
+Required tests added by PG-28 (ADR 0047); each test's docstring cites the ADR item and the requirement ID in brackets. The fakes for `fix_node_dns` replace `scripts.up.run` with `monkeypatch.setattr(up, "run", fake)`, where `fake(cmd, *, check=True, capture=True, env=None, timeout=600, input_text=None)` records `(cmd, input_text)` and returns `subprocess.CompletedProcess(cmd, returncode, stdout, "")` from a per-test script of answers:
+
+| Test | Expectation |
+|---|---|
+| `tests/repo/test_root_chart.py::test_waves_and_sync_policy` | additionally, for every rendered Application in `local`, `gke` and `ci`, `a["spec"]["syncPolicy"]["retry"] == scripts.up.SYNC_RETRY` (D2, INF-021) |
+| `tests/repo/test_root_chart.py::test_application_namespaces` (new) | for `local`, `gke` and `ci`, every rendered Application's `spec.destination.namespace` equals `EXPECTED_NAMESPACES[name]`, a dict literal with the 17 entries of ADR 0047 D1 (`namespaces: argocd`, `gateway-api-crds: argocd`, `cert-manager: cert-manager`, `external-secrets: external-secrets`, `cnpg-operator: cnpg-system`, `kyverno: kyverno`, `chaos-mesh: chaos-mesh`, `prometheus-crds: observability`, `traefik: traefik`, `platform-config: argocd`, `postgres: rootline-data`, `observability: observability`, `keycloak: keycloak`, `argocd-accounts: argocd`, `rootline: rootline`, `workload: shop`, `demo-seed: rootline`); every key of `apps` in `deploy/root/values.yaml` is a key of the dict (D1, INF-020) |
+| `tests/repo/test_root_chart.py::test_apps_contract_matches_plan` | additionally, every entry of `apps` in `deploy/root/values.yaml` has key `namespace` whose value is a non-empty `str` (D1) |
+| `tests/repo/test_root_chart.py::test_missing_namespace_fails` (new) | `run(["helm", "template", "root", str(REPO / "deploy/root"), "--set", "env=local", "--set", "apps.observability.namespace=null"], check=False)` has `returncode != 0` and `"deploy/root/values.yaml apps.observability has no namespace"` in `stderr` (D1) |
+| `tests/repo/test_up_helpers.py::test_root_application_manifest` | additionally `spec["ignoreDifferences"] == [{"group": "argoproj.io", "kind": "Application", "jsonPointers": ["/metadata/finalizers"]}]` and `spec["syncPolicy"] == {"automated": {"prune": True, "selfHeal": True}, "syncOptions": ["RespectIgnoreDifferences=true"], "retry": {"limit": 10, "backoff": {"duration": "10s", "factor": 2, "maxDuration": "3m"}}}` (D2, D3, INF-021) |
+| `tests/repo/test_up_helpers.py::test_strip_search_lines` (new) | `strip_search_lines("nameserver 172.23.0.1\nsearch codegen.net\noptions ndots:0\n") == "nameserver 172.23.0.1\noptions ndots:0\n"`; `strip_search_lines("domain corp.example\nnameserver 10.0.0.1\n") == "nameserver 10.0.0.1\n"`; `strip_search_lines("search a b\n") == ""`; the inputs `"# search x\n\nnameserver 1.1.1.1"`, `"searchx a\n"` and `""` are returned unchanged (E1, INF-030) |
+| `tests/repo/test_up_helpers.py::test_fix_node_dns_no_search_line` (new) | read answers `nameserver 172.23.0.1\n`; exactly one call, `["docker", "exec", "k3d-rootline-server-0", "cat", "/etc/resolv.conf"]`; returns `False` (E1) |
+| `tests/repo/test_up_helpers.py::test_fix_node_dns_new_cluster` (new) | read answers `nameserver 172.23.0.1\nsearch codegen.net\n`, the re-read answers `nameserver 172.23.0.1\n`, `kubectl get namespace` exits 1; calls in this order: the read; `["docker", "exec", "-i", "k3d-rootline-server-0", "sh", "-c", "cat > /etc/resolv.conf"]` with `input_text == "nameserver 172.23.0.1\n"`; the read again; `["kubectl", "--context", "k3d-rootline", "get", "namespace", "argocd", "-o", "name"]`; no `rollout` call; returns `True` (E1) |
+| `tests/repo/test_up_helpers.py::test_fix_node_dns_existing_argocd` (new) | as the previous test, but `kubectl get namespace` exits 0; the calls end with `["kubectl", "--context", "k3d-rootline", "-n", "argocd", "rollout", "restart", "deployment"]` and then `[..., "rollout", "restart", "statefulset"]`; returns `True` (E1) |
+| `tests/repo/test_up_helpers.py::test_fix_node_dns_write_not_applied` (new) | the re-read still answers `search codegen.net\n`; raises `StepError` whose message is `node DNS: search or domain line still present in k3d-rootline-server-0:/etc/resolv.conf` (E1) |
+
 - [ ] **Step 2: Implement `secrets_local.py`** — builds both manifests and applies them with `kubectl --context k3d-rootline apply -f -` (via `scripts.proc.run(..., input_text=yaml.safe_dump(...))`). Namespaces `rootline-secrets` and `argocd` are created with `kubectl create namespace --dry-run=client -o yaml | kubectl apply -f -` equivalents in Python (build the Namespace manifest and apply) when missing.
+
+- [ ] **Step 2b: Root chart fixes (PG-28, ADR 0047 D1 and D2)** — in `deploy/root/values.yaml`, give every `apps` entry the `namespace` key of the "Task W1-T10" root values block (new keys: `namespaces: argocd`, `gateway-api-crds: argocd`, `platform-config: argocd`, `postgres: rootline-data`, `observability: observability`, `keycloak: keycloak`, `argocd-accounts: argocd`, `rootline: rootline`, `workload: shop`, `demo-seed: rootline`; the other seven entries already have theirs), placed directly after `path` (or after `versionKey` for `gateway-api-crds`, after `path` and before `envs` for `demo-seed`); and add a comment line above `apps:`, exactly `# Every entry MUST have \`namespace\` (spec INF-020, ADR 0047 D1); apps.yaml has no default.` In `deploy/root/templates/apps.yaml`, replace the destination `namespace:` line and append the `retry` block exactly as in "Task W1-T10" Step 3. Then run `uv run pytest tests/repo/test_root_chart.py -v` → PASS and `uv run python scripts/render_manifests.py > /dev/null` → exit 0.
 
 - [ ] **Step 3: Implement `up.py`** — steps in order, each printing `==> <step>`:
   1. `k3d cluster list -o json`; if `rootline` absent, write `infra/k3d/rootline.generated.yaml` (substitute `<versions.k3s>` with the tag where `+` becomes `-`, and `<repo>` with the absolute repository path inside WSL, `/home/arkhash0309/projects/rootline`) and run `k3d cluster create --config infra/k3d/rootline.generated.yaml`. The generated file is ignored by the `.gitignore` line of "Files"; `infra/k3d/rootline.yaml` keeps both placeholders (INF-030, ADR 0046 T6).
-  2. `scripts/build_images.py --tag dev --import-k3d rootline` (skips when no service has a Dockerfile yet).
-  3. `helm repo add argo <repo>` and `helm upgrade --install argocd argo/argo-cd --version <chart> -n argocd --create-namespace -f deploy/upstream/argo-cd/values-local.yaml --wait --timeout 10m`.
-  4. `scripts/secrets_local.py`.
-  5. Render `deploy/root` with `--set env=local,domain=127.0.0.1.sslip.io,targetRevision=<--revision>` and apply as Application `root` (project `default`, source `deploy/root`, those parameters, automated sync with prune and selfHeal) with `kubectl apply`.
-  6. `scripts/wait_apps.py --timeout 1200`; on timeout print the unhealthy apps with `kubectl -n argocd get applications` output and exit 1.
-  7. Print the ArgoCD admin password from secret `argocd/argocd-initial-admin-secret` key `password` and the URLs `https://argocd.127.0.0.1.sslip.io`.
-  8. Run `scripts/doctor.py` memory check and print `memory_requests_total`.
+  2. Node DNS (`==> node DNS search list`, PG-28, ADR 0047 E1), on every run, also when the cluster already existed: `fix_node_dns()` (see "Interfaces"). (a) Read `docker exec k3d-rootline-server-0 cat /etc/resolv.conf`. (b) `new = strip_search_lines(text)`; when `new == text`, print `node DNS: k3d-rootline-server-0 has no search or domain line` and continue with item 3. (c) Write `new` with `docker exec -i k3d-rootline-server-0 sh -c 'cat > /etc/resolv.conf'` (stdin = `new`; `cat >` writes through Docker's bind mount, a rename would fail). (d) Read the file again as in (a); when `strip_search_lines(reread) != reread`, raise `StepError("node DNS: search or domain line still present in k3d-rootline-server-0:/etc/resolv.conf")`. Print `node DNS: removed search and domain lines from k3d-rootline-server-0:/etc/resolv.conf`. (e) When `kubectl --context k3d-rootline get namespace argocd -o name` exits 0, run `kubectl --context k3d-rootline -n argocd rollout restart deployment` and `kubectl --context k3d-rootline -n argocd rollout restart statefulset`, and print `node DNS: restarted deployments and statefulsets in namespace argocd`. Every command has timeout 60 s. The `kube-system` pods that k3s starts during `k3d cluster create` keep the old list and are not restarted (CoreDNS `forward . /etc/resolv.conf` does not apply a search list; Traefik, metrics-server, local-path-provisioner and `svclb-traefik` resolve no external names). Docker does not rewrite an edited `resolv.conf`, so the change survives `task stop`/`task start`; `task down` removes it with the container.
+  3. `scripts/build_images.py --tag dev --import-k3d rootline` (skips when no service has a Dockerfile yet).
+  4. `helm repo add argo <repo>` and `helm upgrade --install argocd argo/argo-cd --version <chart> -n argocd --create-namespace -f deploy/upstream/argo-cd/values-local.yaml --wait --timeout 10m`.
+  5. `scripts/secrets_local.py`.
+  6. Render `deploy/root` with `--set env=local,domain=127.0.0.1.sslip.io,targetRevision=<--revision>` and apply `root_application()` as Application `root` with `kubectl apply`: project `default`, source `deploy/root`, those parameters, `spec.ignoreDifferences: [{group: argoproj.io, kind: Application, jsonPointers: [/metadata/finalizers]}]`, `spec.syncPolicy: {automated: {prune: true, selfHeal: true}, syncOptions: [RespectIgnoreDifferences=true], retry: {limit: 10, backoff: {duration: 10s, factor: 2, maxDuration: 3m}}}` (PG-28, ADR 0047 D2 and D3). The field is set here and not in `deploy/root`, because the root chart renders only the child Applications; ArgoCD `v3.6.3` adds PreDelete finalizers to a child whose chart has a PreDelete hook (`kyverno`), and without the entry `root` stays `OutOfSync`.
+  7. `scripts/wait_apps.py --timeout 1200`; on timeout print the unhealthy apps with `kubectl -n argocd get applications` output and exit 1. The expected names are `root` and every rendered child, so this item depends on item 6's `ignoreDifferences` (ADR 0047 D3).
+  8. Print the ArgoCD admin password from secret `argocd/argocd-initial-admin-secret` key `password` and the URLs `https://argocd.127.0.0.1.sslip.io`.
+  9. Run `scripts/doctor.py` memory check and print `memory_requests_total`.
+
+The module docstring of `scripts/up.py` lists these nine steps in this order.
 
 `trust_ca.py`: reads secret `cert-manager/rootline-local-ca` key `ca.crt` (or with `--env gke` the GKE fallback CA secret named in INF-041), writes it to `data/rootline-ca.crt`, then (GEN-060, PG-17): (1) `sudo install -m 0644 data/rootline-ca.crt /usr/local/share/ca-certificates/rootline-ca.crt && sudo update-ca-certificates` (prompts for the sudo password in the terminal); (2) `certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n rootline-local-ca -i data/rootline-ca.crt` after creating the database with `certutil -d sql:$HOME/.pki/nssdb -N --empty-password` if absent; (3) `/mnt/c/Windows/System32/certutil.exe -user -addstore Root <wslpath -w data/rootline-ca.crt>` through WSL interop (absolute path: `appendWindowsPath=false`) (Windows shows a confirmation dialog the owner accepts). Each step prints `OK`/`FAIL`; the script exits 1 if any failed. It refuses to run outside WSL (no `WSL_DISTRO_NAME`) unless `--linux-only` is passed (CI uses `--linux-only`, which skips step 3).
 
@@ -3956,11 +4000,35 @@ kubectl -n observability get pods -l app.kubernetes.io/name=kube-prometheus-stac
 
 Expected: the first command prints `0`; the second and third each print exactly one pod. If the first prints more than `0`, add `DAC_READ_SEARCH` to `capabilities.add` of the collector container in `deploy/charts/observability/values.yaml`, re-sync, and repeat; if it still prints more than `0`, report `STATUS: BLOCKED`. If the second or third prints nothing, report `STATUS: BLOCKED` with `kubectl -n observability get pods --show-labels`, because the O4 policies select those labels. Record the three outputs in `wiki/components/otel-collector.md` and `wiki/components/kube-prometheus-stack.md`.
 
+Verify the PG-28 fixes (ADR 0047), after `task up` exited 0:
+
+```bash
+kubectl --context k3d-rootline -n observability get pods -o name | grep -c .
+kubectl --context k3d-rootline -n argocd get pods -l app.kubernetes.io/instance=observability -o name | grep -c .
+kubectl --context k3d-rootline -n argocd get applications -o jsonpath='{range .items[*]}{.metadata.name} {.spec.destination.namespace} {.spec.syncPolicy.retry.limit}{"\n"}{end}'
+kubectl --context k3d-rootline -n argocd get application root -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
+kubectl --context k3d-rootline -n argocd get application kyverno -o jsonpath='{.metadata.finalizers}{"\n"}'
+kubectl --context k3d-rootline -n rootline-data get externalsecret -o name
+docker exec k3d-rootline-server-0 grep -cE '^(search|domain)[[:space:]]' /etc/resolv.conf
+kubectl --context k3d-rootline -n argocd exec deploy/argocd-repo-server -c repo-server -- grep '^search' /etc/resolv.conf
+kubectl --context k3d-rootline -n argocd exec deploy/argocd-repo-server -c repo-server -- getent hosts github.com
+```
+
+Expected, in order: (1) a number of at least `1` (D1); (2) `0` (grep exits 1; D1); (3) one line per Application, the namespace equal to ADR 0047 D1 (`root`: `argocd`), and `10` on every line, `root` included (D2); (4) `Synced Healthy` (D3); (5) a list that contains `resources-finalizer.argocd.argoproj.io` (D3); (6) six lines, `externalsecret.external-secrets.io/pg-keycloak`, `pg-rootline-agent`, `pg-rootline-api`, `pg-rootline-console`, `pg-rootline-faultlab`, `pg-rootline-migrator` (D2); (7) `0` (grep exits 1; E1); (8) exactly `search argocd.svc.cluster.local svc.cluster.local cluster.local` (E1); (9) one line with name `github.com` and an address other than `79.72.77.199` (E1). Then push one more commit to the tracked branch (the wiki commit of Step 9 is enough) and repeat (4) and (5) after `root` has synced the new revision (`kubectl -n argocd get application root -o jsonpath='{.status.sync.revision}'` equals the new commit): (4) still `Synced Healthy` and (5) still lists the two `pre-delete-finalizer.argocd.argoproj.io` entries, which shows that `RespectIgnoreDifferences=true` keeps them. If any expectation fails, report `STATUS: BLOCKED` with the command output; do not change the decision. Record the outputs in `wiki/components/argocd.md` section "Defects found by W1-T12".
+
 If the pgvector check fails, build `deploy/images/postgres/Dockerfile` (`FROM ghcr.io/cloudnative-pg/postgresql:16` + `apt-get install -y postgresql-16-pgvector`), record the decision in an ADR (next free number), set `postgres-image` in `versions.yaml`, and re-run.
 
 - [ ] **Step 6: Measure memory (S2)** — `task doctor` → `memory_requests_total` ≤ 9.5 GiB. Write `wiki/components/capacity.md`: a table of every pod's memory request from `kubectl get pods -A -o json` (component, namespace, request, limit) and the total, dated. If > 9.5 GiB, apply ARC-031 reductions in order, recording each with the new total. The workload budget (≤ 3.2 GiB, ARC-030) is checked by summing namespace `shop`; if it exceeds 3.2 GiB, set per-component requests in the render values (`components.<name>.resources.requests.memory`) to bring the sum under 3.2 GiB and re-render (this is a re-render that bumps `baseline-v2`, WKL-001).
 
-- [ ] **Step 7: Run `task trust-ca`** and open `https://argocd.127.0.0.1.sslip.io` in the Windows browser (`/mnt/c/Windows/explorer.exe "https://argocd.127.0.0.1.sslip.io"` from WSL); log in as `admin`. Record the result in `wiki/runbooks/local-up.md`, which now documents: prerequisites, `.env.local` keys for week 1, `task up`, expected duration, URLs, admin password retrieval, `task stop/start/down`, and troubleshooting (apps stuck `Progressing` → `kubectl -n argocd get applications`, `argocd app get` via UI).
+- [ ] **Step 7: Run `task trust-ca`** and open `https://argocd.127.0.0.1.sslip.io` in the Windows browser (`/mnt/c/Windows/explorer.exe "https://argocd.127.0.0.1.sslip.io"` from WSL); log in as `admin`. Record the result in `wiki/runbooks/local-up.md`, which now documents: prerequisites, `.env.local` keys for week 1, `task up`, expected duration, URLs, admin password retrieval, `task stop/start/down`, and troubleshooting (apps stuck `Progressing` → `kubectl -n argocd get applications`, `argocd app get` via UI). The "Troubleshooting" table of `wiki/runbooks/local-up.md` has, per PG-28 (ADR 0047), exactly these rows in addition to the ones above, and no longer gives the manual `resolv.conf` workaround as the fix:
+
+| Symptom | Cause and command |
+|---|---|
+| Every Application `Unknown`; repo-server log `failed to list refs: dial tcp <ip>:22: connect: connection timed out` | A DNS search domain of the workstation (`search` line of WSL `/etc/resolv.conf`, copied from Windows) answers `github.com.<domain>` with a wildcard address. `task up` step "node DNS search list" removes the line from `k3d-rootline-server-0:/etc/resolv.conf` (ADR 0047 E1); rerun `task up`. Check with `kubectl -n argocd exec deploy/argocd-repo-server -c repo-server -- getent hosts github.com` (a GitHub address, not the wildcard address) |
+| Applications `Unknown` with `TLS handshake timeout` or `context deadline exceeded` towards `github.com` | the workstation's connection to GitHub is slow or down (not E1); check with `curl -sS -o /dev/null --max-time 20 https://github.com`; ArgoCD retries the sync with `syncPolicy.retry` (ADR 0047 D2) |
+| An Application shows `operationState.phase: Failed` after ten retries | the cause persisted for 1210 s; fix it, then start one sync: `kubectl --context k3d-rootline -n argocd patch application <name> --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{}}}'` |
+| A sync stays `Running` on an old revision (for example `observability` waiting for a DaemonSet in the wrong namespace) | `kubectl --context k3d-rootline -n argocd patch application <name> --type merge -p '{"status":{"operationState":{"phase":"Terminating"}}}'` |
+| Application `root` `OutOfSync` with only `Application/<child>` listed | Application `root` lacks the `ignoreDifferences` of ADR 0047 D3; rerun `task up`, which applies `root_application()` again |
 
 - [ ] **Step 8: Smoke registration (overview §7.7)** — create `tests/smoke/platform.yaml` with one `argocd_app` check (`expect: Synced/Healthy`) per Application enabled for `local` in `deploy/root/values.yaml`, then run `task smoke:cluster` → all PASS.
 
