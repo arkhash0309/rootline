@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
+      - run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with: {version: "${{ env.V_UV }}"}
       - run: uv python install ${{ env.V_PYTHON }}
@@ -22,52 +22,81 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy --strict services libs eval/runner
       - run: uv run pytest -m "not integration and not k8s" --cov --cov-report=xml
-      - run: uv run pytest -m integration -v
+      - run: |
+          # pytest exit code 5 means "no tests collected": no test is marked integration yet. Any other non-zero code fails the step.
+          uv run pytest -m integration -v || [ $? -eq 5 ]
   console:
     runs-on: ubuntu-24.04
-    if: ${{ hashFiles('apps/console/package.json') != '' }}
+    # hashFiles is not allowed in a job-level `if`; the `gate` step sets the output the later steps test.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - id: gate
+        if: ${{ hashFiles('apps/console/package.json') != '' }}
+        run: echo "present=true" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.present == 'true'
+        run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
+      - if: steps.gate.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: "${{ env.V_NODE }}", cache: npm, cache-dependency-path: apps/console/package-lock.json}
-      - run: npm --prefix apps/console ci
-      - run: npm --prefix apps/console run lint
-      - run: npm --prefix apps/console run typecheck
-      - run: npm --prefix apps/console run test -- --run
+      - if: steps.gate.outputs.present == 'true'
+        run: npm --prefix apps/console ci
+      - if: steps.gate.outputs.present == 'true'
+        run: npm --prefix apps/console run lint
+      - if: steps.gate.outputs.present == 'true'
+        run: npm --prefix apps/console run typecheck
+      - if: steps.gate.outputs.present == 'true'
+        run: npm --prefix apps/console run test -- --run
   policy:
     runs-on: ubuntu-24.04
-    if: ${{ hashFiles('policies/opa/**/*.rego', 'policies/kyverno/**/*.yaml') != '' }}
+    # hashFiles is not allowed in a job-level `if`; the `gate` step sets the output the later steps test.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
-      - uses: open-policy-agent/setup-opa@b2b258e089860efaadaaf71bf6e3aecb4a3eeff1 # v2.4.0
+      - id: gate
+        if: ${{ hashFiles('policies/opa/**/*.rego', 'policies/kyverno/**/*.yaml') != '' }}
+        run: echo "present=true" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.present == 'true'
+        run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
+      - if: steps.gate.outputs.present == 'true'
+        uses: open-policy-agent/setup-opa@b2b258e089860efaadaaf71bf6e3aecb4a3eeff1 # v2.4.0
         with: {version: "${{ env.V_OPA }}"}
-      - run: opa fmt --diff --fail policies/opa
-      - run: opa test policies/opa -v
-      - run: |
+      - if: steps.gate.outputs.present == 'true'
+        run: opa fmt --diff --fail policies/opa
+      - if: steps.gate.outputs.present == 'true'
+        run: opa test policies/opa -v
+      - if: steps.gate.outputs.present == 'true'
+        run: |
           curl -sSL -o kyverno.tgz "https://github.com/kyverno/kyverno/releases/download/v${V_KYVERNO_CLI}/kyverno-cli_v${V_KYVERNO_CLI}_linux_x86_64.tar.gz"
           tar -xzf kyverno.tgz kyverno && ./kyverno test policies/kyverno
   infra:
     runs-on: ubuntu-24.04
-    if: ${{ hashFiles('infra/terraform/**/*.tf') != '' }}
+    # hashFiles is not allowed in a job-level `if`; the `gate` step sets the output the later steps test.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      - id: gate
+        if: ${{ hashFiles('infra/terraform/**/*.tf') != '' }}
+        run: echo "present=true" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.present == 'true'
+        run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
+      - if: steps.gate.outputs.present == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with: {terraform_version: "${{ env.V_TERRAFORM }}"}
-      - run: terraform fmt -check -recursive infra/terraform
-      - run: for d in infra/terraform/persistent infra/terraform/cluster; do terraform -chdir=$d init -backend=false && terraform -chdir=$d validate; done
-      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+      - if: steps.gate.outputs.present == 'true'
+        run: terraform fmt -check -recursive infra/terraform
+      - if: steps.gate.outputs.present == 'true'
+        run: for d in infra/terraform/persistent infra/terraform/cluster; do terraform -chdir=$d init -backend=false && terraform -chdir=$d validate; done
+      - if: steps.gate.outputs.present == 'true'
+        uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
         with: {tflint_version: "v${{ env.V_TFLINT }}"}
-      - run: tflint --recursive --chdir infra/terraform
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - if: steps.gate.outputs.present == 'true'
+        run: tflint --recursive --chdir infra/terraform
+      - if: steps.gate.outputs.present == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with: {version: "v${{ env.V_TRIVY }}", scan-type: config, scan-ref: infra/terraform, exit-code: "1", severity: "CRITICAL,HIGH"}
   manifests:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
+      - run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with: {version: "${{ env.V_UV }}"}
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
@@ -81,7 +110,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
+      - run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with: {version: "${{ env.V_UV }}"}
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
@@ -95,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {fetch-depth: 0}
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
+      - run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with: {version: "${{ env.V_UV }}"}
       - run: uv run python scripts/wiki_lint.py
@@ -110,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {fetch-depth: 0}
-      - run: cat .github/versions.env >> "$GITHUB_ENV"
+      - run: grep -v '^#' .github/versions.env >> "$GITHUB_ENV"
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env: {GITHUB_TOKEN: "${{ github.token }}", GITLEAKS_VERSION: "${{ env.V_GITLEAKS }}"}
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
