@@ -8,3 +8,4 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Added ADRs 0001-0036 (W1-T04)
 - [agent] Added rootline-wiki agent skill (W1-T05)
 - [agent] Added rootline_common foundation modules (W1-T07)
+- [agent] Added ci.yml, scripts/ci_changed_files.py, ruleset JSON files and the Rulesets runbook section (W1-T14; ruleset creation O-3 and the first CI run are deferred)
