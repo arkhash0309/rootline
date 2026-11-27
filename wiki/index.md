@@ -48,6 +48,7 @@ WIK-001: `wiki/` is the persistent working memory for the AI coding agents that 
 - [adr/0043-w1-t07-review-decisions.md](adr/0043-w1-t07-review-decisions.md) — ADR 0043 — `rootline_common` decisions from the W1-T07 review (spec-gap)
 - [adr/0044-w1-t09-referenced-objects.md](adr/0044-w1-t09-referenced-objects.md) — ADR 0044 — Workload render keeps the objects its kept workloads reference (spec-gap)
 - [adr/0045-w1-t14-ci-decisions.md](adr/0045-w1-t14-ci-decisions.md) — ADR 0045 — CI workflow and ruleset decisions from the W1-T14 review (spec-gap)
+- [adr/0046-w1-t10-t11-review-decisions.md](adr/0046-w1-t10-t11-review-decisions.md) — ADR 0046 — GitOps root and observability decisions from the W1-T10 and W1-T11 reviews (spec-gap)
 - [architecture.md](architecture.md) — Living architecture: context diagram and component table with links to the spec.
 - [components/agent.md](components/agent.md) — Component page for `agent` (WIK-010).
 - [components/api.md](components/api.md) — Component page for `api` (WIK-010).

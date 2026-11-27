@@ -28,7 +28,7 @@ Mirrors `2026-11-26-rootline-schedule.yaml` (week 1); `uv run python scripts/swa
 | W1-S2 | sequential | W1-S1 | W1-T16 (`feat/w1-swarm-tooling`); W1-T08 (`docs/w1-env-repo`) | — |
 | W1-P1 | parallel | W1-S2 | W1-T02 (`feat/w1-versions`); W1-T03+W1-T04 (`feat/w1-wiki`) | W1-T02 steps 8 → W1-S3 |
 | W1-P2 | parallel | W1-P1 | W1-T05 (`feat/w1-wiki-skill`); W1-T06 (`feat/w1-taskfile`); W1-T07 (`feat/w1-py-common`) | W1-T05 steps 4 → W1-S3; W1-T05 pre-dispatch steps 1 (coordinator) |
-| W1-P3 | parallel | W1-P2 | W1-T09 (`feat/w1-workload-render`); W1-T10 (`feat/w1-gitops-root`); W1-T11 (`feat/w1-observability-postgres`); W1-T14 (`feat/w1-ci`) | W1-T09 steps 6, 7 → W1-S3; W1-T14 steps 2, 3 → W1-S3 |
+| W1-P3 | parallel | W1-P2 | W1-T09 (`feat/w1-workload-render`); W1-T11 (`feat/w1-observability-postgres`); W1-T10 (`feat/w1-gitops-root`); W1-T14 (`feat/w1-ci`) | W1-T09 steps 6, 7 → W1-S3; W1-T14 steps 2, 3 → W1-S3 |
 | W1-S3 | sequential | W1-P3 | W1-T12 (`feat/w1-task-up`); W1-T13 (`feat/w1-baseline-gate`); W1-T15 (no branch) | — |
 
 **W1-P1 integration steps (PG-22, ADR 0041 decisions 1 and 2).** These steps run in this order, in addition to overview §7.5 and §7.6:
@@ -37,6 +37,14 @@ Mirrors `2026-11-26-rootline-schedule.yaml` (week 1); `uv run python scripts/swa
 2. The coordinator records the resulting `origin/develop` commit as the W1-P1 stage base in `.swarm/stages/W1-P1.json`.
 3. After the `docs/w1-t02-gaps` PR merges to develop, the W1-T02 implementer rebases `feat/w1-versions` onto the new `origin/develop` (`git fetch origin && git rebase origin/develop`; the rebase is clean because the PR touches only plans, spec, ADR and `wiki/versions.md`, and the `wiki/versions.md` stub on `develop` is byte-identical to the one on `feat/w1-versions`), then pushes with `git push --force-with-lease origin feat/w1-versions` (task branches are unprotected, overview §7.6). Only then is `uv run python scripts/check_ownership.py --task W1-T02 --base origin/develop --branch HEAD` run in the W1-T02 worktree; it reads the schedule YAML from that checkout, which now lists `wiki/versions.md` in W1-T02 `owns`. Expected: no output, exit 0. If the rebase stops on a conflict, the implementer runs `git rebase --abort` and reports `STATUS: BLOCKED` with the conflicting paths; the planner then designs the resolution.
 4. The coordinator dispatches W1-T03 (branch `feat/w1-wiki`, base = the stage base of step 2), creates `integration/w1-p1` from the same stage base, and continues with overview §7.6.
+
+**W1-P3 integration steps (PG-27, ADR 0046 decisions T1, T8, T11 and O3).** The W1-P3 task order is W1-T09, W1-T11, W1-T10, W1-T14 (changed on 2026-11-27 so that W1-T11 is merged before W1-T10). These steps run in this order, in addition to overview §7.5 and §7.6:
+
+1. Fix rounds (overview §7.5). The W1-T11 implementer applies, on `feat/w1-observability-postgres`, the ADR 0046 items O1 to O5, T1 step 1 and T11 step 1 (W1-T11 amendment note). The W1-T10 implementer applies, on `feat/w1-gitops-root`, the items T2 (except the removal of `| default dict` and the overrides), T3, T4, T5, T7, T9, T10 and O3 item 1 (W1-T10 amendment note). Each task is re-reviewed until `APPROVE`.
+2. The coordinator creates `integration/w1-p3` from the W1-P3 stage base recorded in `.swarm/stages/W1-P3.json` and merges, with overview §7.6 step 2, `feat/w1-workload-render` (W1-T09) and then `feat/w1-observability-postgres` (W1-T11).
+3. Before merging W1-T10, the coordinator dispatches the W1-T10 implementer with `mode: resolve-conflict` and this step as its task. In the W1-T10 worktree: `git fetch origin && git rebase origin/integration/w1-p3`. A conflict in `deploy/root/files/versions.yaml` or `.github/versions.env` is resolved by taking either side and running `uv run python scripts/render_versions.py` (overview §7.4); any other conflict makes the implementer run `git rebase --abort` and report `STATUS: BLOCKED` with the conflicting paths, and the planner designs the resolution. Then the implementer makes the ADR 0046 T1 step 3 changes (remove `repo` and `chartVersion` from `apps.prometheus-crds`; the T2 `upstream` template text with `required`), the T8 item 3 change (remove `--allow-missing`) and the T11 item 2 change (`copyCa.image` removed; `ca-configmap.yaml` reads `files/versions.yaml`), runs `uv run python scripts/render_versions.py` (it writes `deploy/charts/platform-config/files/versions.yaml`), and runs, each with exit 0: `uv run python scripts/render_versions.py --check`; `uv run pytest tests/repo/test_root_chart.py tests/repo/test_versions.py tests/repo/test_observability_values.py -v`; `uv run python scripts/render_manifests.py | kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"` (0 invalid); `uv run python scripts/check_ownership.py --task W1-T10 --base origin/integration/w1-p3 --branch HEAD`. It commits `fix(deploy): read prometheus-operator-crds and kubectl-image from generated versions (ADR 0046)` with the implementer trailer and runs `git push --force-with-lease origin feat/w1-gitops-root`.
+4. The reviewer re-reviews only the rebase and the new commit: `git range-diff <W1-P3 stage base>..<approved W1-T10 sha> origin/integration/w1-p3..origin/feat/w1-gitops-root` (the approved commits must appear unchanged apart from conflict resolutions) and `git show origin/feat/w1-gitops-root` (the new commit). On `APPROVE` the coordinator merges `feat/w1-gitops-root`, then `feat/w1-ci` (W1-T14), and continues with overview §7.6 step 3.
+5. **[CONFIRM]** Before the W1-P3 integration PR is merged into `develop` (overview §7.6 step 5), the coordinator asks the owner to confirm ADR 0046 O3: namespace `observability` moves from PSS `enforce: baseline` to `enforce: privileged` (with `warn` and `audit` at `baseline`) so the collector DaemonSet `otel-collector-agent` can mount `/var/log/pods` read-only, and Kyverno restores the `baseline` checks for every other pod there from W3-T12. Options for the owner: (a) confirm (recommended); (b) drop the `file_log` receiver from WKL-020 and keep `baseline`; (c) move the collector to its own `privileged` namespace. On (a) the coordinator records the confirmation in the integration PR body and merges. On (b) or (c) the coordinator does not merge and dispatches the planner to re-plan W1-T10 and W1-T11.
 
 ---
 
@@ -3298,16 +3306,18 @@ In `rootline`: commit `deploy/upstream/otel-demo/values.yaml`, `scripts/`, tests
 
 ### Task W1-T10: k3d cluster config and the ArgoCD app-of-apps
 
-**Requirement IDs:** INF-020, INF-021, INF-022 (helpers stub), INF-030, INF-031, ARC-010, ARC-002, GEN-012, SEC-011 (local CoreDNS), SEC-100 (bootstrap store), PG-9, PG-10, PG-22.
+**Requirement IDs:** INF-020, INF-021, INF-022 (helpers stub), INF-030, INF-031, ARC-010, ARC-002, GEN-012, SEC-011 (local CoreDNS), SEC-100 (bootstrap store), PG-9, PG-10, PG-22, PG-27.
 **Depends on:** W1-T02, W1-T09. **Branch:** `feat/w1-gitops-root`.
 
 > **Amended 2026-11-27, per PG-22 (overview §5; ADR 0041).** Step 5 row `ca-configmap.yaml`: the `copy-ca` Job image is `docker.io/rancher/kubectl` (no shell), so the Job runs `kubectl apply -k` over a projected volume, and the `cert-manager` Role on secret `rootline-local-ca` is dropped.
+
+> **Amended 2026-11-27 after the W1-T10 review of `feat/w1-gitops-root` at `2bc66d5`, per PG-27 (overview §5; ADR 0046 `wiki/adr/0046-w1-t10-t11-review-decisions.md`).** Changed, with the ADR 0046 item in brackets: the root values block (`prometheus-crds` uses `versionKey: prometheus-operator-crds`, no overrides; T1); Step 1 (the added required tests); Step 2 (`gateway.enabled: false`, `ports.websecure.http.tls.enabled`, T9; `.gitignore` belongs to W1-T12, T6); Step 3 (`upstream` values path from `versionKey` and `required`, T2; `gateway-api` `targetRevision: v{{ $v }}`, T3); Step 4 (`observability` PSS `privileged` with `warn`/`audit` `baseline`, O3 item 1); Step 5 rows `gateway.yaml` (listener ports 8000 and 8443, T9), `ca-configmap.yaml` (local/ci only, T5; image from the generated `files/versions.yaml`, T11) and `generators.yaml` (four namespaces, T4); Step 6 (`tpl` in `rootline.image`, T10; no CPU values, T7); Step 8 (`--allow-missing` until W1-P3 integration step 3, T8). The items that depend on W1-T11 (T1 step 3, T8 item 3, T11 item 2) are applied only in "W1-P3 integration steps" step 3 under "Execution schedule" above; all others in the normal fix round.
 
 **Files:**
 - Create: `infra/k3d/rootline.yaml`, `infra/k3d/manifests/traefik-config.yaml`
 - Create: `deploy/root/Chart.yaml`, `deploy/root/values.yaml`, `deploy/root/templates/_app.tpl`, `deploy/root/templates/apps.yaml`
 - Create: `deploy/charts/namespaces/{Chart.yaml,values.yaml,templates/namespaces.yaml}`
-- Create: `deploy/charts/platform-config/{Chart.yaml,values.yaml,templates/*.yaml}` (cluster issuers and CA, ESO stores and generators, `coredns-custom`, Gateway, `rootline-ca` ConfigMap; Kyverno policies are added in W3-T12)
+- Create: `deploy/charts/platform-config/{Chart.yaml,values.yaml,templates/*.yaml}` (cluster issuers and CA, ESO stores and generators, `coredns-custom`, Gateway, `rootline-ca` ConfigMap; Kyverno policies are added in W3-T12), and `deploy/charts/platform-config/files/versions.yaml` (generated by `scripts/render_versions.py`, committed in W1-P3 integration step 3; ADR 0046 T11)
 - Create: `deploy/charts/rootline/{Chart.yaml,values.yaml,templates/_helpers.tpl}` (empty umbrella with helpers)
 - Create: `deploy/upstream/<name>/values-local.yaml` for `argo-cd`, `cert-manager`, `external-secrets`, `cloudnative-pg`, `kyverno`, `chaos-mesh`, `gateway-api` (README only), and `deploy/upstream/README.md` listing every upstream chart repo (SEC-110 `rootline-platform` sources)
 - Create: `scripts/render_manifests.py` (renders `deploy/root` for `local`, `gke`, `ci` and every chart with each env values file, to stdout as one YAML stream; used by lint and CI)
@@ -3336,7 +3346,7 @@ apps:                           # every Application; later tasks flip enabled: t
   cnpg-operator:     {enabled: true,  wave: -3, kind: upstream, versionKey: cloudnative-pg, chart: cloudnative-pg, namespace: cnpg-system}
   kyverno:           {enabled: true,  wave: -3, kind: upstream, versionKey: kyverno, chart: kyverno, namespace: kyverno}
   chaos-mesh:        {enabled: true,  wave: -3, kind: upstream, versionKey: chaos-mesh, chart: chaos-mesh, namespace: chaos-mesh, envs: [local]}
-  prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: kube-prometheus-stack, chart: prometheus-operator-crds, namespace: observability}
+  prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability}
   traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
   platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
   postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
@@ -3348,7 +3358,7 @@ apps:                           # every Application; later tasks flip enabled: t
   demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, envs: [gke]}
 ```
 
-(`prometheus-crds` uses chart `prometheus-community/prometheus-operator-crds`; the key `prometheus-operator-crds` is resolved by W1-T02. `observability` is a local wrapper chart with upstream dependencies, created in W1-T11.)
+(`prometheus-crds` uses chart `prometheus-community/prometheus-operator-crds`; its `versions.yaml` key `prometheus-operator-crds` was resolved by W1-T02 and reaches `deploy/root/files/versions.yaml` when W1-T11 adds it to `CHART_KEYS` of `scripts/render_versions.py` (ADR 0046 T1). Until W1-P3 integration step 3, `feat/w1-gitops-root` carries the temporary overrides `repo: https://prometheus-community.github.io/helm-charts` and `chartVersion: "33.0.2"` on this entry; step 3 removes them, and no other entry may carry `repo` or `chartVersion`. `observability` is a local wrapper chart with upstream dependencies, created in W1-T11.)
 
 - Every local chart receives Helm parameters `global.env`, `global.domain`, `global.gcpProject`, `global.k8sIssuer`, `global.artifactsBucket`, `global.ingressIP` and its `values-<env>.yaml` file (`valueFiles: [values.yaml, values-<env>.yaml]`, `ignoreMissingValueFiles: true`).
 
@@ -3404,7 +3414,7 @@ def test_namespaces_pss() -> None:
     out = run(["helm", "template", "ns", str(REPO / "deploy/charts/namespaces")]).stdout
     ns = {d["metadata"]["name"]: d["metadata"]["labels"] for d in yaml.safe_load_all(out) if d}
     expected = {"rootline": "restricted", "rootline-data": "restricted", "rootline-lab": "restricted",
-                "rootline-secrets": "restricted", "keycloak": "restricted", "observability": "baseline",
+                "rootline-secrets": "restricted", "keycloak": "restricted", "observability": "privileged",
                 "shop": "baseline", "argocd": "baseline", "chaos-mesh": "privileged", "kyverno": "baseline",
                 "external-secrets": "baseline", "cert-manager": "baseline", "cnpg-system": "baseline",
                 "traefik": "baseline"}
@@ -3414,7 +3424,21 @@ def test_namespaces_pss() -> None:
 
 Run: `uv run pytest tests/repo/test_root_chart.py -v` → FAIL.
 
-- [ ] **Step 2: Write `infra/k3d/rootline.yaml` and Traefik config** — exactly INF-030 (with `image: rancher/k3s:<versions.k3s with + replaced by ->`; `scripts/up.py` substitutes it at runtime by writing `infra/k3d/rootline.generated.yaml`, gitignored) and:
+Required test expectations added by PG-27 (ADR 0046); each test's docstring cites the ADR item and the requirement ID in brackets:
+
+| Test | Expectation |
+|---|---|
+| `test_namespaces_pss` | `expected["observability"] == "privileged"` (O3 item 1, ARC-010); `observability` also has `pod-security.kubernetes.io/warn: baseline`, `pod-security.kubernetes.io/warn-version: latest`, `pod-security.kubernetes.io/audit: baseline`, `pod-security.kubernetes.io/audit-version: latest`; no other namespace has a `warn` or `audit` label |
+| `test_application_sources` | Application `prometheus-crds`: `sources[0]` `chart == "prometheus-operator-crds"`, `repoURL` and `targetRevision` equal `repo` and `chart` of `deploy/root/files/versions.yaml` key `prometheus-operator-crds`; every `upstream` Application's first `valueFiles` entry is `$values/deploy/upstream/<versionKey>/values-<env>.yaml` (`cnpg-operator` → `deploy/upstream/cloudnative-pg/`) (T1, T2, INF-020); `gateway-api-crds` `targetRevision == "v" + versions["gateway-api"]` (T3) |
+| `test_apps_contract_matches_plan` | no entry of `apps` in `deploy/root/values.yaml` has a `repo` or `chartVersion` key (T1). Until W1-P3 integration step 3 the test allows exactly the two keys on `prometheus-crds`; step 3 removes that allowance |
+| `test_traefik_helmchartconfig` | parsed `valuesContent` == `{"deployment": {"replicas": 1}, "gateway": {"enabled": False}, "providers": {"kubernetesGateway": {"enabled": True}}, "ports": {"websecure": {"http": {"tls": {"enabled": True}}}}}` (T9, INF-030) |
+| `test_platform_config_tls_and_dns` | `listeners["http"]["port"] == 8000`, `listeners["https"]["port"] == 8443`, protocols `HTTP` and `HTTPS` (T9) |
+| `test_platform_config_gke_differences` | on `gke` no `Job/copy-ca`, no `ConfigMap/copy-ca-kustomization`, no ConfigMap `rootline-ca` (T5, SEC-011) |
+| `test_eso_stores_and_generators` | `Password/password-48` and `Password/password-43` exist in exactly the namespaces `rootline-data`, `rootline`, `keycloak`, `observability` (T4, SEC-100) |
+| `test_copy_ca_image_matches_versions_yaml` | from W1-P3 integration step 3: `yaml.safe_load` of `deploy/charts/platform-config/files/versions.yaml` == `{"kubectl-image": <versions.yaml row>}` and container `copy-ca` image == `<repo>:v<version>@<digest>` of that row; before step 3 it compares `copyCa.image` of `values.yaml` instead (T11, GEN-050) |
+| `test_render_manifests_script` | runs `scripts/render_manifests.py` with `--allow-missing` until W1-P3 integration step 3, without arguments after it; exit 0 (T8) |
+
+- [ ] **Step 2: Write `infra/k3d/rootline.yaml` and Traefik config** — exactly INF-030, with the two placeholders kept literally in the committed file: `image: rancher/k3s:<versions.k3s>` and `<repo>` in the volume. `scripts/up.py` (W1-T12) substitutes them at runtime (`<versions.k3s>` = `versions.yaml` `k3s` with `+` replaced by `-`) and writes `infra/k3d/rootline.generated.yaml`; W1-T12 adds that path to `.gitignore` (ADR 0046 T6), and W1-T10 does not edit `.gitignore`. Traefik config:
 
 ```yaml
 # infra/k3d/manifests/traefik-config.yaml
@@ -3425,14 +3449,19 @@ spec:
   valuesContent: |-
     deployment:
       replicas: 1
+    gateway:
+      enabled: false
     providers:
       kubernetesGateway:
         enabled: true
     ports:
       websecure:
-        tls:
-          enabled: true
+        http:
+          tls:
+            enabled: true
 ```
+
+k3s `v1.36.6+k3s1` installs Traefik from its bundled chart `traefik-40.1.7+up40.1.0` (Rancher repack of upstream `40.1.0`). `gateway.enabled: false` removes the chart's default Gateway `traefik-gateway`; GatewayClass `traefik` is still created. `ports.websecure.http.tls.enabled` is the chart key for TLS on entry point `websecure` (`ports.websecure.tls` is rejected by the upstream chart schema). Entry points: `web` `:8000`, `websecure` `:8443`; Service `traefik` maps port 80 → 8000 and 443 → 8443 (ADR 0046 T9, verified with `helm template` on 2026-11-27).
 
 - [ ] **Step 3: Write the root chart**
 
@@ -3474,14 +3503,14 @@ spec:
         - {name: global.artifactsBucket, value: {{ $.Values.artifactsBucket | quote }}}
         - {name: global.ingressIP, value: {{ $.Values.ingressIP | quote }}}
   {{- else if eq $app.kind "upstream" }}
-  {{- $v := index $versions $app.versionKey }}
+  {{- $v := required (printf "deploy/root/files/versions.yaml has no key %s" $app.versionKey) (index $versions $app.versionKey) }}
   sources:
     - repoURL: {{ $v.repo }}
       chart: {{ $app.chart }}
       targetRevision: {{ $v.chart | quote }}
       helm:
         valueFiles:
-          - $values/deploy/upstream/{{ $name }}/values-{{ $.Values.env }}.yaml
+          - $values/deploy/upstream/{{ $app.versionKey }}/values-{{ $.Values.env }}.yaml
         ignoreMissingValueFiles: true
     - repoURL: {{ $.Values.repoURL }}
       targetRevision: {{ $.Values.targetRevision }}
@@ -3490,7 +3519,7 @@ spec:
   {{- $v := index $versions $app.versionKey }}
   source:
     repoURL: https://github.com/kubernetes-sigs/gateway-api
-    targetRevision: {{ $v.version }}
+    targetRevision: v{{ $v }}
     path: config/crd/standard
   {{- else if eq $app.kind "env-repo" }}
   source:
@@ -3514,11 +3543,13 @@ spec:
 {{- end }}
 ```
 
+Values path and versions (ADR 0046 T2, T3): an `upstream` Application reads `$values/deploy/upstream/<versionKey>/values-<env>.yaml`, so `cnpg-operator` reads `deploy/upstream/cloudnative-pg/` and `prometheus-crds` reads `deploy/upstream/prometheus-operator-crds/` (no file; `ignoreMissingValueFiles: true`). `required` makes `helm template` fail with `deploy/root/files/versions.yaml has no key <key>` when the key is missing. `gateway-api` is a scalar in `versions.yaml` (`"1.7.0"`), and the Git tag is `v1.7.0`. On `feat/w1-gitops-root`, until W1-P3 integration step 3, the `upstream` branch keeps `index $versions $app.versionKey | default dict`, `{{ $app.repo | default $v.repo }}` and `{{ $app.chartVersion | default $v.chart | quote }}` for the `prometheus-crds` overrides (ADR 0046 T1); step 3 replaces them with the block above.
+
 The AppProject `rootline-workload` (SEC-110) is created by the `argocd-accounts` chart in W2-T08. Until that app is enabled, the `workload` Application uses project `default` (the `project:` line above implements this).
 
 If the container index from W1-T09 step 6(c) is not 0, change the `jsonPointers` value and the test.
 
-- [ ] **Step 4: Write `deploy/charts/namespaces`** — one `Namespace` per row of ARC-010 plus `cnpg-system` and `traefik`, each with labels `pod-security.kubernetes.io/enforce: <level>`, `pod-security.kubernetes.io/enforce-version: latest`, `rootline.dev/managed: "true"`. Default-deny NetworkPolicies for the namespaces marked "yes" in ARC-010 (`rootline`, `rootline-data`, `rootline-lab`, `rootline-secrets`, `keycloak`, `observability`): `podSelector: {}`, `policyTypes: [Ingress, Egress]`, plus an `allow-dns` egress policy to `kube-system` port 53 UDP/TCP. Allow-rules for each flow are added by the charts that own the pods (W1-T11 for observability and postgres, W3-T12 for `rootline`, W3-T01 for keycloak). Exception for week 1: `observability` and `rootline-data` get their allow-rules in W1-T11.
+- [ ] **Step 4: Write `deploy/charts/namespaces`** — one `Namespace` per row of ARC-010 plus `cnpg-system` and `traefik`, each with labels `pod-security.kubernetes.io/enforce: <level>`, `pod-security.kubernetes.io/enforce-version: latest`, `rootline.dev/managed: "true"`. `observability` is `privileged` and additionally carries `pod-security.kubernetes.io/warn: baseline`, `pod-security.kubernetes.io/warn-version: latest`, `pod-security.kubernetes.io/audit: baseline`, `pod-security.kubernetes.io/audit-version: latest` (values entry `{name: observability, pss: privileged, warn: baseline, audit: baseline, defaultDeny: true}`; the template renders the `warn` and `audit` pairs only for entries that set those keys; ADR 0046 O3 item 1, owner confirmation in "W1-P3 integration steps" step 5). Default-deny NetworkPolicies for the namespaces marked "yes" in ARC-010 (`rootline`, `rootline-data`, `rootline-lab`, `rootline-secrets`, `keycloak`, `observability`): `podSelector: {}`, `policyTypes: [Ingress, Egress]`, plus an `allow-dns` egress policy to `kube-system` port 53 UDP/TCP. Allow-rules for each flow are added by the charts that own the pods (W1-T11 for observability and postgres, W3-T12 for `rootline`, W3-T01 for keycloak). Exception for week 1: `observability` and `rootline-data` get their allow-rules in W1-T11.
 
 - [ ] **Step 5: Write `deploy/charts/platform-config`**
 
@@ -3527,18 +3558,18 @@ Templates (each gated by `.Values.global.env` where noted):
 | File | Objects |
 |---|---|
 | `ca.yaml` | (local, ci) `ClusterIssuer selfsigned` (`selfSigned: {}`); `Certificate rootline-local-ca` in `cert-manager` (`isCA: true`, `duration: 87600h`, `privateKey: {algorithm: ECDSA, size: 256}`, `secretName: rootline-local-ca`, `issuerRef: selfsigned`); `ClusterIssuer rootline-ca` (`ca.secretName: rootline-local-ca`); `Certificate rootline-wildcard` in `kube-system` for `*.{{ .Values.global.domain }}` and `{{ .Values.global.domain }}` from `rootline-ca`, secret `rootline-wildcard-tls` |
-| `gateway.yaml` | `Gateway rootline` in `kube-system` (local/ci; `traefik` ns on gke), `gatewayClassName: traefik`, listeners `http` (80, `allowedRoutes.namespaces.from: All`) and `https` (443, TLS terminate with `rootline-wildcard-tls`, `allowedRoutes.namespaces.from: All`) |
+| `gateway.yaml` | `Gateway rootline` in `kube-system` (local/ci; `traefik` ns on gke), `gatewayClassName: traefik`, listeners `http` (`port: 8000`, `protocol: HTTP`, `allowedRoutes.namespaces.from: All`) and `https` (`port: 8443`, `protocol: HTTPS`, TLS `mode: Terminate` with `certificateRefs: [{name: rootline-wildcard-tls}]`, `allowedRoutes.namespaces.from: All`). The listener port is the Traefik entry point port (`web` 8000, `websecure` 8443); clients still connect to 80 and 443, which Service `traefik` maps to 8000 and 8443 (ADR 0046 T9). An HTTPRoute `parentRefs` entry that names a port uses 8000 or 8443 |
 | `coredns.yaml` | (local, ci) `ConfigMap coredns-custom` in `kube-system` with key `rootline.override`: `rewrite name auth.{{D}} traefik.kube-system.svc.cluster.local` and the same for `console.{{D}}` and `argocd.{{D}}` |
-| `ca-configmap.yaml` | `ConfigMap rootline-ca` in `rootline` and `keycloak` with key `ca.crt`. trust-manager is not installed, so an ArgoCD PostSync Job `copy-ca` in `cert-manager` (annotations `argocd.argoproj.io/hook: PostSync`, `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation`; `backoffLimit: 6`, `activeDeadlineSeconds: 600`) writes the ConfigMap into both namespaces. Image: `versions.yaml` key `kubectl-image` as `<repo>:v<version>@<digest>`, which on 2026-11-27 is `docker.io/rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe` (PG-22, ADR 0041; the image holds only `/bin/kubectl`, no shell, user `kubectl` UID 1000). Because there is no shell, the Job runs one `kubectl` command and gets the CA through a volume, not through the API: ConfigMap `copy-ca-kustomization` in `cert-manager` holds key `kustomization.yaml` with exactly `apiVersion: kustomize.config.k8s.io/v1beta1`, `kind: Kustomization`, `generatorOptions: {disableNameSuffixHash: true}`, `configMapGenerator: [{name: rootline-ca, namespace: rootline, files: [ca.crt]}, {name: rootline-ca, namespace: keycloak, files: [ca.crt]}]`; the pod mounts one `projected` volume `work` at `/work` (read-only) with sources configMap `copy-ca-kustomization` (item `kustomization.yaml`) and secret `rootline-local-ca` (item `ca.crt` → path `ca.crt`), plus an `emptyDir` volume `tmp` at `/tmp`. Container `copy-ca`: `command: ["/bin/kubectl", "apply", "-k", "/work"]`, env `HOME=/tmp` (kubectl's discovery cache), securityContext `runAsNonRoot: true`, `runAsUser: 1000`, `runAsGroup: 1000`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities: {drop: [ALL]}`, `seccompProfile: {type: RuntimeDefault}`; `restartPolicy: Never`. If secret `rootline-local-ca` does not exist yet, the kubelet keeps the pod in `ContainerCreating` and retries the mount until it appears or `activeDeadlineSeconds` ends the Job (the PostSync hook then fails and the next sync runs it again). RBAC: ServiceAccount `copy-ca` in `cert-manager` (no Role in `cert-manager`: the kubelet, not the ServiceAccount, reads the secret for the volume); Roles in `rootline` and `keycloak` with `get,create,patch` on configmaps (`resourceNames: [rootline-ca]` for `get,patch`; `create` cannot be restricted by name), each bound to ServiceAccount `cert-manager/copy-ca`. Verified on 2026-11-27: `kubectl kustomize` of this kustomization in `docker.io/rancher/kubectl:v1.36.2`, run as UID 1000 with a read-only root filesystem over a directory with the projected-volume symlink layout, prints the two ConfigMaps |
+| `ca-configmap.yaml` | (local, ci; on gke W7-T02 Step 3 adds ConfigMap `rootline-ca` with the Let's Encrypt roots, ADR 0046 T5) `ConfigMap rootline-ca` in `rootline` and `keycloak` with key `ca.crt`. trust-manager is not installed, so an ArgoCD PostSync Job `copy-ca` in `cert-manager` (annotations `argocd.argoproj.io/hook: PostSync`, `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation`; `backoffLimit: 6`, `activeDeadlineSeconds: 600`) writes the ConfigMap into both namespaces. Image: `versions.yaml` key `kubectl-image` as `<repo>:v<version>@<digest>`, read by the template from the generated file `deploy/charts/platform-config/files/versions.yaml` (`{{- $kubectl := index (.Files.Get "files/versions.yaml" | fromYaml) "kubectl-image" }}`, `image: {{ printf "%s:v%s@%s" $kubectl.repo $kubectl.version $kubectl.digest }}`; there is no `copyCa.image` value; ADR 0046 T11; until W1-P3 integration step 3 `feat/w1-gitops-root` keeps `copyCa.image` in `values.yaml`), which on 2026-11-27 is `docker.io/rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe` (PG-22, ADR 0041; the image holds only `/bin/kubectl`, no shell, user `kubectl` UID 1000). Because there is no shell, the Job runs one `kubectl` command and gets the CA through a volume, not through the API: ConfigMap `copy-ca-kustomization` in `cert-manager` holds key `kustomization.yaml` with exactly `apiVersion: kustomize.config.k8s.io/v1beta1`, `kind: Kustomization`, `generatorOptions: {disableNameSuffixHash: true}`, `configMapGenerator: [{name: rootline-ca, namespace: rootline, files: [ca.crt]}, {name: rootline-ca, namespace: keycloak, files: [ca.crt]}]`; the pod mounts one `projected` volume `work` at `/work` (read-only) with sources configMap `copy-ca-kustomization` (item `kustomization.yaml`) and secret `rootline-local-ca` (item `ca.crt` → path `ca.crt`), plus an `emptyDir` volume `tmp` at `/tmp`. Container `copy-ca`: `command: ["/bin/kubectl", "apply", "-k", "/work"]`, env `HOME=/tmp` (kubectl's discovery cache), securityContext `runAsNonRoot: true`, `runAsUser: 1000`, `runAsGroup: 1000`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities: {drop: [ALL]}`, `seccompProfile: {type: RuntimeDefault}`; `restartPolicy: Never`. If secret `rootline-local-ca` does not exist yet, the kubelet keeps the pod in `ContainerCreating` and retries the mount until it appears or `activeDeadlineSeconds` ends the Job (the PostSync hook then fails and the next sync runs it again). RBAC: ServiceAccount `copy-ca` in `cert-manager` (no Role in `cert-manager`: the kubelet, not the ServiceAccount, reads the secret for the volume); Roles in `rootline` and `keycloak` with `get,create,patch` on configmaps (`resourceNames: [rootline-ca]` for `get,patch`; `create` cannot be restricted by name), each bound to ServiceAccount `cert-manager/copy-ca`. Verified on 2026-11-27: `kubectl kustomize` of this kustomization in `docker.io/rancher/kubectl:v1.36.2`, run as UID 1000 with a read-only root filesystem over a directory with the projected-volume symlink layout, prints the two ConfigMaps |
 | `eso-bootstrap.yaml` | (local, ci) ServiceAccount `eso-bootstrap-reader` in `rootline-secrets`; Role `get,list,watch` on secrets named `rootline-bootstrap`; `ClusterSecretStore bootstrap` (`provider.kubernetes.remoteNamespace: rootline-secrets`, `auth.serviceAccount: {name: eso-bootstrap-reader, namespace: rootline-secrets}`, `server.caProvider: {type: ConfigMap, name: kube-root-ca.crt, key: ca.crt, namespace: rootline-secrets}`) |
 | `eso-pg-roles.yaml` | ServiceAccount `eso-pg-reader` in `rootline-data`, Role `get,list,watch` on secrets with names `pg-rootline-migrator`, `pg-rootline-api`, `pg-rootline-agent`, `pg-rootline-faultlab`, `pg-rootline-console`, `pg-keycloak`; `ClusterSecretStore pg-roles` with `remoteNamespace: rootline-data` (PG-10) |
-| `generators.yaml` | `Password` generators (`generators.external-secrets.io/v1alpha1`): `password-48` (`length: 48, digits: 8, symbols: 0, noUpper: false, allowRepeat: true`) for passwords and webhook tokens; `password-43` (`length: 43, digits: 8, symbols: 0, allowRepeat: true`) for `job-token-key` and `bff-session-key`. Consumers derive the 32-byte AES key as `sha256(value)`; W4-T06 records this in `wiki/components/api.md` |
+| `generators.yaml` | `Password` generators (`generators.external-secrets.io/v1alpha1`): `password-48` (`length: 48, digits: 8, symbols: 0, noUpper: false, allowRepeat: true`) for passwords and webhook tokens; `password-43` (`length: 43, digits: 8, symbols: 0, noUpper: false, allowRepeat: true`) for `job-token-key` and `bff-session-key`. Both are rendered into every namespace of `values.yaml` key `generatorNamespaces: [rootline-data, rootline, keycloak, observability]`, because a `generatorRef` resolves in the ExternalSecret's namespace (ADR 0046 T4; a namespaced generator, not a `ClusterGenerator`). Consumers derive the 32-byte AES key as `sha256(value)`; W4-T06 records this in `wiki/components/api.md` |
 
 For every DB role, an `ExternalSecret pg-<role>` in `rootline-data` with `dataFrom: [{sourceRef: {generatorRef: {apiVersion: generators.external-secrets.io/v1alpha1, kind: Password, name: password-48}}}]`, `refreshInterval: "0"`, and `target.template` producing `type: kubernetes.io/basic-auth` with `username: <role>` and `password: "{{ .password }}"`.
 
 - [ ] **Step 6: Write the empty umbrella chart and helpers**
 
-`deploy/charts/rootline/templates/_helpers.tpl` defines, for later tasks: `rootline.podSecurityContext` (`runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}`), `rootline.containerSecurityContext` (`readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}`), `rootline.image` (`{{ .Values.image.registry }}/{{ .component }}:{{ .Values.image.tag }}`), `rootline.probes` (`/healthz` liveness period 10 s, `/readyz` readiness period 5 s, both on port `http`), `rootline.otelEnv` (`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector.observability.svc.cluster.local:4317`, `OTEL_SERVICE_NAME=rootline-<component>`), `rootline.keycloakTokenVolume` (projected SA token per SEC-033). `values.yaml`: `image: {registry: rootline, tag: dev, pullPolicy: IfNotPresent}`, `resources:` map per component from ARC-030, `security: {delegationMode: act}`, `llm: {clusterBudgetUsd: 6}`. `values-gke.yaml`: `image.registry: us-central1-docker.pkg.dev/{{gcpProject}}/rootline`, `image.pullPolicy: IfNotPresent`. No templates yet render objects.
+`deploy/charts/rootline/templates/_helpers.tpl` defines, for later tasks: `rootline.podSecurityContext` (`runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}`), `rootline.containerSecurityContext` (`readOnlyRootFilesystem: true, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}`), `rootline.image` (`{{ tpl .Values.image.registry (dict "Values" .Values) }}/{{ .component }}:{{ .Values.image.tag }}`; `tpl` evaluates the `{{ .Values.global.gcpProject }}` reference in `values-gke.yaml`, ADR 0046 T10), `rootline.probes` (`/healthz` liveness period 10 s, `/readyz` readiness period 5 s, both on port `http`), `rootline.otelEnv` (`OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector.observability.svc.cluster.local:4317`, `OTEL_SERVICE_NAME=rootline-<component>`), `rootline.keycloakTokenVolume` (projected SA token per SEC-033). `values.yaml`: `image: {registry: rootline, tag: dev, pullPolicy: IfNotPresent}`, `resources:` map per component from ARC-030 (memory only; no CPU values in W1, ADR 0046 T7), `security: {delegationMode: act}`, `llm: {clusterBudgetUsd: 6}`. `values-gke.yaml`: `image.registry: us-central1-docker.pkg.dev/{{ .Values.global.gcpProject }}/rootline`, `image.pullPolicy: IfNotPresent`. No templates yet render objects.
 
 - [ ] **Step 7: Upstream values for week 1** (`deploy/upstream/<name>/values-local.yaml`; copy to `values-ci.yaml` and `values-gke.yaml` with the differences noted)
 
@@ -3553,7 +3584,7 @@ For every DB role, an `ExternalSecret pg-<role>` in `rootline-data` with `dataFr
 
 `gke` copy differences: `chaos-mesh` not deployed on gke (root values `envs: [local]`); `argo-cd` identical; others identical.
 
-- [ ] **Step 8: Implement `scripts/render_manifests.py`** — for each env in `local`, `gke`, `ci`: `helm template` the root chart; for every Application of kind `local-chart`, run `helm template` on that chart path with `values.yaml` and `values-<env>.yaml` (if present) and `--set global.env=<env> --set global.domain=example.sslip.io`; print all documents to stdout separated by `---`. Exit non-zero on any helm failure.
+- [ ] **Step 8: Implement `scripts/render_manifests.py`** — for each env in `local`, `gke`, `ci`: `helm template` the root chart; for every Application of kind `local-chart`, run `helm template` on that chart path with `values.yaml` and `values-<env>.yaml` (if present) and `--set global.env=<env> --set global.domain=example.sslip.io`; print all documents to stdout separated by `---`. Exit 1 on any helm failure and on a `local-chart` path without `Chart.yaml` (stderr `render_manifests: chart not found: <path>`). Until W1-P3 integration step 3 the script also accepts `--allow-missing`, which turns a missing chart directory into the stderr line `skip <env> <name>: <path> not present`; step 3 removes the flag (ADR 0046 T8).
 
 - [ ] **Step 9: Run tests and lint**
 
@@ -3566,11 +3597,14 @@ Run: `uv run python scripts/render_manifests.py | kubeconform -strict -summary -
 
 ### Task W1-T11: Observability stack and Postgres
 
-**Requirement IDs:** WKL-020, WKL-021, WKL-022, WKL-023, ARC-002, ARC-030, DB-001, DB-002 (roles), PG-10.
+**Requirement IDs:** WKL-020, WKL-021, WKL-022, WKL-023, ARC-002, ARC-010, ARC-030, DB-001, DB-002 (roles), GEN-050, PG-10, PG-27.
 **Depends on:** W1-T10. **Branch:** `feat/w1-observability-postgres`.
+
+> **Amended 2026-11-27 after the W1-T11 review of `feat/w1-observability-postgres` at `c35124d`, per PG-27 (overview §5; ADR 0046 `wiki/adr/0046-w1-t10-t11-review-decisions.md`).** Changed, with the ADR 0046 item in brackets: "Files" (`scripts/render_versions.py` gains `prometheus-operator-crds` in `CHART_KEYS`, T1, and the output `deploy/charts/platform-config/files/versions.yaml`, T11); Step 1 (the added required tests); Step 2 values block (`kubeControllerManager`, `kubeEtcd`, `kubeScheduler`, `kubeProxy` disabled, O5; the collector block: `logsCollection` preset off, explicit `file_log` receiver, `/var/log/pods` read-only `hostPath` only, UID 0 `securityContext`, new component names, O2, O3 item 2) and the paragraphs after it (DaemonSet `otel-collector-agent`, Service `otel-collector`, O1; network policies, O4); Step 3 (`rootline-data` policies, O4); Step 5 (`wiki/components/otel-collector.md` names DaemonSet `otel-collector-agent`, Service `otel-collector` and the O2 component names). W1-T11 is merged into `integration/w1-p3` before W1-T10 ("W1-P3 integration steps" under "Execution schedule" above).
 
 **Files:**
 - Create: `deploy/charts/observability/Chart.yaml` (dependencies: `kube-prometheus-stack`, `loki`, `tempo`, `opentelemetry-collector`, versions from `versions.yaml` — `scripts/render_versions.py` gains a step that rewrites the `dependencies` versions in this `Chart.yaml` and `--check` covers it), `values.yaml`, `values-local.yaml`, `values-gke.yaml`, `values-ci.yaml`, `templates/networkpolicies.yaml`
+- Modify: `scripts/render_versions.py` — `CHART_KEYS` gains `"prometheus-operator-crds"` directly after `"kube-prometheus-stack"`; new constant `PLATFORM_CONFIG_KEYS = ["kubectl-image"]` and new output `deploy/charts/platform-config/files/versions.yaml` = `"# GENERATED by scripts/render_versions.py from versions.yaml. Do not edit.\n" + yaml.safe_dump({k: data[k] for k in PLATFORM_CONFIG_KEYS}, sort_keys=True)`, included in `render()` only when `deploy/charts/platform-config/Chart.yaml` exists; the module docstring lists both outputs (ADR 0046 T1, T11). Then run `uv run python scripts/render_versions.py` and commit the regenerated `deploy/root/files/versions.yaml` (always-allowed, overview §7.4)
 - Create: `deploy/charts/postgres/{Chart.yaml,values.yaml,values-gke.yaml,templates/cluster.yaml,templates/database-keycloak.yaml,templates/networkpolicies.yaml}`
 - Test: `tests/repo/test_observability_values.py`
 
@@ -3633,6 +3667,18 @@ def test_cnpg_cluster() -> None:
 
 Run → FAIL.
 
+Required test expectations added by PG-27 (ADR 0046) in `tests/repo/test_observability_values.py`; each test's docstring cites the ADR item and the requirement ID in brackets:
+
+| Test | Expectation |
+|---|---|
+| `test_collector_names` | env `local`: exactly one DaemonSet, named `otel-collector-agent`; Service `otel-collector` with ports 4317 and 4318; no Deployment from the collector chart (O1, WKL-020) |
+| `test_collector_pipelines` | the rendered ConfigMap `otel-collector-agent` key `relay` has receivers exactly `{file_log, otlp}`, processors exactly `{batch, k8s_attributes, memory_limiter}`, exporters exactly `{otlp_grpc/tempo, otlp_http/loki, otlp_http/prometheus}`; pipelines `traces` = `otlp` → `memory_limiter, k8s_attributes, batch` → `otlp_grpc/tempo`, `metrics` = `otlp` → same processors → `otlp_http/prometheus`, `logs` = `otlp, file_log` → same processors → `otlp_http/loki`; `file_log.include` == `["/var/log/pods/shop_*/*/*.log", "/var/log/pods/rootline_*/*/*.log"]` (O2, WKL-020) |
+| `test_collector_host_paths` | the DaemonSet pod spec has exactly one `hostPath` volume, `{path: /var/log/pods, type: Directory}`, mounted only at `/var/log/pods` with `readOnly: true`; no volume refers to `/var/lib/docker/containers`; container `securityContext` == `{runAsUser: 0, runAsGroup: 0, runAsNonRoot: False, allowPrivilegeEscalation: False, readOnlyRootFilesystem: True, capabilities: {drop: [ALL]}, seccompProfile: {type: RuntimeDefault}}` (O3, SEC-090) |
+| `test_no_unreachable_control_plane_targets` | no rendered Service or ServiceMonitor name contains `kube-controller-manager`, `kube-etcd`, `kube-scheduler` or `kube-proxy`; ServiceMonitors whose names end in `-kubelet`, `-apiserver` and `-coredns` exist (O5) |
+| `test_observability_network_policies` | the eight `observability` policies of ADR 0046 O4 with exactly the pod selectors, peers and ports of its table; `allow-otlp-ingress` selects `app.kubernetes.io/name: opentelemetry-collector`, `component: agent-collector`; `allow-operator-webhook-ingress` selects `app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator`; `allow-egress-kubelet` selects `app.kubernetes.io/name: prometheus` and is the only policy that allows egress port 10250 (O4, ARC-010) |
+| `test_postgres_network_policies` | the four `rootline-data` policies of ADR 0046 O4 (O4, DB-001) |
+| `test_render_versions_chart_keys` | `deploy/root/files/versions.yaml` key `prometheus-operator-crds` equals the `versions.yaml` row; `scripts.render_versions.render()` has a key `deploy/charts/platform-config/files/versions.yaml` exactly when `deploy/charts/platform-config/Chart.yaml` exists, and its text parses to `{"kubectl-image": <versions.yaml row>}` (T1, T11, GEN-050) |
+
 - [ ] **Step 2: Observability values** (`deploy/charts/observability/values.yaml`, keys nested under each dependency name)
 
 ```yaml
@@ -3641,6 +3687,10 @@ kube-prometheus-stack:
   nodeExporter: {enabled: false}
   crds: {enabled: false}            # installed by the prometheus-crds Application (wave -3)
   defaultRules: {create: false}
+  kubeControllerManager: {enabled: false}   # ADR 0046 O5: unreachable on k3s and GKE
+  kubeEtcd: {enabled: false}
+  kubeScheduler: {enabled: false}
+  kubeProxy: {enabled: false}
   kubeStateMetrics: {enabled: true}
   kube-state-metrics:
     resources: {requests: {memory: 64Mi}, limits: {memory: 192Mi}}
@@ -3695,40 +3745,90 @@ tempo:
           processors: [service-graphs, span-metrics]
     resources: {requests: {memory: 384Mi}, limits: {memory: 768Mi}}
 opentelemetry-collector:
+  fullnameOverride: otel-collector        # Service otel-collector; DaemonSet otel-collector-agent (ADR 0046 O1)
   mode: daemonset
+  service: {enabled: true}                # the chart creates no Service in daemonset mode by default
   image: {repository: otel/opentelemetry-collector-contrib}
+  command: {name: otelcol-contrib}
   presets:
     kubernetesAttributes: {enabled: true}
-    logsCollection: {enabled: true, includeCollectorLogs: false}
+    logsCollection: {enabled: false}      # ADR 0046 O3: the preset also mounts /var/lib/docker/containers
+  securityContext:                        # ADR 0046 O3: UID 0 reads the root:root 0640 pod log files
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+    seccompProfile: {type: RuntimeDefault}
+  extraVolumes:
+    - name: varlogpods
+      hostPath: {path: /var/log/pods, type: Directory}
+  extraVolumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
   resources: {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
-  config:
+  ports:                                  # PSS baseline checks (warn/audit) and Kyverno forbid hostPort
+    otlp: {enabled: true, hostPort: 0}
+    otlp-http: {enabled: true, hostPort: 0}
+    jaeger-compact: {enabled: false}
+    jaeger-thrift: {enabled: false}
+    jaeger-grpc: {enabled: false}
+    zipkin: {enabled: false}
+  config:                                 # component names of chart 0.183.2 (ADR 0046 O2)
     receivers:
+      jaeger: null                        # null removes the chart-default components WKL-020 does not use
+      zipkin: null
+      prometheus: null
       otlp: {protocols: {grpc: {endpoint: "0.0.0.0:4317"}, http: {endpoint: "0.0.0.0:4318"}}}
-      filelog:
+      file_log:
         include: [/var/log/pods/shop_*/*/*.log, /var/log/pods/rootline_*/*/*.log]
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        retry_on_failure: {enabled: true}
+        operators:
+          - {type: container, id: container-parser, max_log_size: 102400}
     processors:
       memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
       batch: {}
     exporters:
-      otlp/tempo: {endpoint: "tempo.observability.svc:4317", tls: {insecure: true}}
-      otlphttp/prometheus: {endpoint: "http://prometheus-operated.observability.svc:9090/api/v1/otlp",
-                            tls: {insecure: true}}
-      otlphttp/loki: {endpoint: "http://loki.observability.svc:3100/otlp", tls: {insecure: true}}
+      debug: null
+      otlp_grpc/tempo: {endpoint: "tempo.observability.svc:4317", tls: {insecure: true}}
+      otlp_http/prometheus: {endpoint: "http://prometheus-operated.observability.svc:9090/api/v1/otlp",
+                             tls: {insecure: true}}
+      otlp_http/loki: {endpoint: "http://loki.observability.svc:3100/otlp", tls: {insecure: true}}
     service:
       pipelines:
-        traces: {receivers: [otlp], processors: [memory_limiter, k8sattributes, batch], exporters: [otlp/tempo]}
-        metrics: {receivers: [otlp], processors: [memory_limiter, k8sattributes, batch],
-                  exporters: [otlphttp/prometheus]}
-        logs: {receivers: [otlp, filelog], processors: [memory_limiter, k8sattributes, batch],
-               exporters: [otlphttp/loki]}
+        traces: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_grpc/tempo]}
+        metrics: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch],
+                  exporters: [otlp_http/prometheus]}
+        logs: {receivers: [otlp, file_log], processors: [memory_limiter, k8s_attributes, batch],
+               exporters: [otlp_http/loki]}
 ```
 
-The collector Service must be named `otel-collector` (set `fullnameOverride: otel-collector`). The `filelog` preset adds a `hostPath` mount of `/var/log/pods` read-only, which the W3-T12 Kyverno policy explicitly allows. Exact key names for `enableOTLPReceiver`/`otlp` depend on the resolved kube-prometheus-stack version: check `helm show values prometheus-community/kube-prometheus-stack --version <v> | grep -n -i otlp` and adapt; the test accepts either the field or the feature flag.
+The other keys of the `loki` and `tempo` blocks implemented on `feat/w1-observability-postgres` at `c35124d` stay (`enabled: true`, `fullnameOverride: loki`/`tempo`, `loki.sidecar.rules.enabled: false`, `tempo.tempo.reportingEnabled: false`); ADR 0046 does not change them.
+
+The collector Service is named `otel-collector` and the collector runs as DaemonSet `otel-collector-agent` (chart naming for `fullnameOverride: otel-collector` and `mode: daemonset`; ADR 0046 O1). The chart keeps its default `rewriteDeprecatedComponentNames: true`, and the block above already uses the names the chart writes: receivers `otlp`, `file_log`; processors `memory_limiter`, `k8s_attributes` (added by the `kubernetesAttributes` preset), `batch`; exporters `otlp_grpc/tempo`, `otlp_http/prometheus`, `otlp_http/loki` (ADR 0046 O2). The only `hostPath` is `/var/log/pods`, read-only, `type: Directory`; PSS `baseline` forbids every `hostPath`, so namespace `observability` is PSS `privileged` with `warn` and `audit` at `baseline` (W1-T10 Step 4), and the W3-T12 Kyverno policy `disallow-privileged` restores the `baseline` checks for every other pod there (ADR 0046 O3, owner confirmation in "W1-P3 integration steps" step 5). Exact key names for `enableOTLPReceiver`/`otlp` depend on the resolved kube-prometheus-stack version: check `helm show values prometheus-community/kube-prometheus-stack --version <v> | grep -n -i otlp` and adapt; the test accepts either the field or the feature flag.
 
 `values-gke.yaml`: `kube-prometheus-stack.prometheus.prometheusSpec.retention: 1d`, `loki.loki.limits_config.retention_period: 24h`, `tempo.tempo.retention: 24h`, collector `mode: daemonset` unchanged.
 `values-ci.yaml`: `loki`, `tempo`, `opentelemetry-collector` disabled with `loki.enabled: false`, `tempo.enabled: false` and `opentelemetry-collector.enabled: false` (add `condition: <name>.enabled` to each of the three dependencies in `Chart.yaml`), Prometheus retention `6h`.
 
-`templates/networkpolicies.yaml`: in `observability`, allow ingress from all namespaces to ports 4317, 4318 (collector), 9090 (Prometheus, from `rootline` and `observability`), 3100 and 3200 (from `rootline` and `observability`), 9093 (Alertmanager, from `observability`); allow egress from `observability` to all namespaces (scraping) and to the kube-apiserver (port 443/6443).
+`templates/networkpolicies.yaml` (ADR 0046 O4; all ports TCP; namespaces matched by label `kubernetes.io/metadata.name`):
+
+| Policy | Pod selector | Direction | Peer | Ports |
+|---|---|---|---|---|
+| `allow-same-namespace` | all pods (`{}`) | ingress | `podSelector: {}` (same namespace) | all |
+| `allow-otlp-ingress` | `app.kubernetes.io/name: opentelemetry-collector`, `component: agent-collector` | ingress | `namespaceSelector: {}` | 4317, 4318 |
+| `allow-query-ingress` | all pods | ingress | namespaces `rootline`, `observability` | 9090, 3100, 3200 |
+| `allow-alertmanager-ingress` | all pods | ingress | namespace `observability` | 9093 |
+| `allow-operator-webhook-ingress` | `app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator` | ingress | `ipBlock: {cidr: 0.0.0.0/0}` (the kube-apiserver calls from a node or control-plane address) | 10250 |
+| `allow-egress-pods` | all pods | egress | `namespaceSelector: {}` | all |
+| `allow-egress-apiserver` | all pods | egress | `ipBlock: {cidr: 0.0.0.0/0}` | 443, 6443 |
+| `allow-egress-kubelet` | `app.kubernetes.io/name: prometheus` | egress | `ipBlock: {cidr: 0.0.0.0/0}` (kubelet and cAdvisor on the node address) | 10250 |
+
+DNS egress is the `allow-dns` policy of W1-T10 Step 4.
 
 - [ ] **Step 3: Postgres chart** (`deploy/charts/postgres/templates/cluster.yaml`)
 
@@ -3767,7 +3867,7 @@ spec:
     {{- end }}
 ```
 
-`database-keycloak.yaml`: CNPG `Database` resource `keycloak` (owner `keycloak`, cluster `rootline-pg`). `networkpolicies.yaml`: ingress to port 5432 from namespaces `rootline` and `keycloak`, plus from the CNPG operator namespace `cnpg-system` to ports 8000 and 5432. Pin `imageName` with the digest resolved in W1-T02 (`versions.yaml` key `postgres-image`).
+`database-keycloak.yaml`: CNPG `Database` resource `keycloak` (owner `keycloak`, cluster `rootline-pg`). `networkpolicies.yaml` (ADR 0046 O4; all ports TCP; every policy selects all pods): `allow-postgres-clients` (ingress 5432 from namespaces `rootline` and `keycloak`); `allow-cnpg-operator` (ingress 8000 and 5432 from namespace `cnpg-system`); `allow-same-namespace` (ingress from and egress to `podSelector: {}`); `allow-egress-apiserver` (egress to `ipBlock: {cidr: 0.0.0.0/0}` on 443 and 6443, for the CNPG instance manager and the initdb Job; 6443 is the k3s API server endpoint port, 443 the GKE one). No CPU request in W1; W3-T12 adds `resources.requests.cpu: 100m` to `cluster.yaml` (ADR 0046 T7). Pin `imageName` with the digest resolved in W1-T02 (`versions.yaml` key `postgres-image`).
 
 - [ ] **Step 4: Run tests** → `uv run pytest tests/repo/test_observability_values.py -v` → PASS.
 
@@ -3780,9 +3880,12 @@ spec:
 **Requirement IDs:** GEN-060 (`up`, `secrets:local`, `trust-ca`, `images`), S2, ARC-030, ARC-031, DB-001 (pgvector check), O-2, O-4.
 **Depends on:** W1-T10, W1-T11, O-2, O-4. **Branch:** `feat/w1-task-up`.
 
+> **Amended 2026-11-27, per PG-27 (overview §5; ADR 0046 decisions T6, O3 item 3 and O4).** "Files" gains `.gitignore`; Step 3 item 1 names the `.gitignore` line; Step 5 gains the collector log-permission check and the Prometheus pod-label check.
+
 **Files:**
 - Create: `scripts/up.py`, `scripts/secrets_local.py`, `scripts/trust_ca.py`, `scripts/build_images.py`, `scripts/wait_apps.py`
-- Modify: `wiki/runbooks/local-up.md`, `wiki/components/capacity.md`
+- Modify: `wiki/runbooks/local-up.md`, `wiki/components/capacity.md`, `wiki/components/otel-collector.md` and `wiki/components/kube-prometheus-stack.md` (Step 5 results); `deploy/charts/observability/values.yaml` only in the Step 5 `DAC_READ_SEARCH` fallback
+- Modify: `.gitignore` — append, at the end of the file, exactly the two lines `# Generated k3d config (W1-T12, ADR 0046 T6)` and `infra/k3d/rootline.generated.yaml` (W1-S3 is sequential, so no `owns` list applies, overview §7.4)
 - Test: `tests/repo/test_up_helpers.py`
 
 **Interfaces:**
@@ -3816,7 +3919,7 @@ def test_repo_secret_shape() -> None:
 - [ ] **Step 2: Implement `secrets_local.py`** — builds both manifests and applies them with `kubectl --context k3d-rootline apply -f -` (via `scripts.proc.run(..., input_text=yaml.safe_dump(...))`). Namespaces `rootline-secrets` and `argocd` are created with `kubectl create namespace --dry-run=client -o yaml | kubectl apply -f -` equivalents in Python (build the Namespace manifest and apply) when missing.
 
 - [ ] **Step 3: Implement `up.py`** — steps in order, each printing `==> <step>`:
-  1. `k3d cluster list -o json`; if `rootline` absent, write `infra/k3d/rootline.generated.yaml` (substitute `<versions.k3s>` with the tag where `+` becomes `-`, and `<repo>` with the absolute repository path inside WSL, `/home/arkhash0309/projects/rootline`) and run `k3d cluster create --config infra/k3d/rootline.generated.yaml`.
+  1. `k3d cluster list -o json`; if `rootline` absent, write `infra/k3d/rootline.generated.yaml` (substitute `<versions.k3s>` with the tag where `+` becomes `-`, and `<repo>` with the absolute repository path inside WSL, `/home/arkhash0309/projects/rootline`) and run `k3d cluster create --config infra/k3d/rootline.generated.yaml`. The generated file is ignored by the `.gitignore` line of "Files"; `infra/k3d/rootline.yaml` keeps both placeholders (INF-030, ADR 0046 T6).
   2. `scripts/build_images.py --tag dev --import-k3d rootline` (skips when no service has a Dockerfile yet).
   3. `helm repo add argo <repo>` and `helm upgrade --install argocd argo/argo-cd --version <chart> -n argocd --create-namespace -f deploy/upstream/argo-cd/values-local.yaml --wait --timeout 10m`.
   4. `scripts/secrets_local.py`.
@@ -3841,7 +3944,19 @@ Verify pgvector (DB-001):
 kubectl -n rootline-data exec rootline-pg-1 -- psql -U postgres -d rootline -c "CREATE EXTENSION IF NOT EXISTS vector; SELECT extversion FROM pg_extension WHERE extname='vector';"
 ```
 
-Expected: a `0.8.x` version. If it fails, build `deploy/images/postgres/Dockerfile` (`FROM ghcr.io/cloudnative-pg/postgresql:16` + `apt-get install -y postgresql-16-pgvector`), record the decision in an ADR (next free number), set `postgres-image` in `versions.yaml`, and re-run.
+Expected: a `0.8.x` version.
+
+Verify the collector and network-policy assumptions of ADR 0046 (O3 item 3, O4), after the cluster has run for 5 min:
+
+```bash
+kubectl -n observability logs ds/otel-collector-agent | grep -ci "permission denied"
+kubectl -n observability get pods -l app.kubernetes.io/name=prometheus -o name
+kubectl -n observability get pods -l app.kubernetes.io/name=kube-prometheus-stack-prometheus-operator -o name
+```
+
+Expected: the first command prints `0`; the second and third each print exactly one pod. If the first prints more than `0`, add `DAC_READ_SEARCH` to `capabilities.add` of the collector container in `deploy/charts/observability/values.yaml`, re-sync, and repeat; if it still prints more than `0`, report `STATUS: BLOCKED`. If the second or third prints nothing, report `STATUS: BLOCKED` with `kubectl -n observability get pods --show-labels`, because the O4 policies select those labels. Record the three outputs in `wiki/components/otel-collector.md` and `wiki/components/kube-prometheus-stack.md`.
+
+If the pgvector check fails, build `deploy/images/postgres/Dockerfile` (`FROM ghcr.io/cloudnative-pg/postgresql:16` + `apt-get install -y postgresql-16-pgvector`), record the decision in an ADR (next free number), set `postgres-image` in `versions.yaml`, and re-run.
 
 - [ ] **Step 6: Measure memory (S2)** — `task doctor` → `memory_requests_total` ≤ 9.5 GiB. Write `wiki/components/capacity.md`: a table of every pod's memory request from `kubectl get pods -A -o json` (component, namespace, request, limit) and the total, dated. If > 9.5 GiB, apply ARC-031 reductions in order, recording each with the new total. The workload budget (≤ 3.2 GiB, ARC-030) is checked by summing namespace `shop`; if it exceeds 3.2 GiB, set per-component requests in the render values (`components.<name>.resources.requests.memory`) to bring the sum under 3.2 GiB and re-render (this is a re-render that bumps `baseline-v2`, WKL-001).
 
