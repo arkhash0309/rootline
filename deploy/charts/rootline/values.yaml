@@ -11,8 +11,9 @@ image:
   tag: dev
   pullPolicy: IfNotPresent
 
-# Memory requests and limits per component on `local` (ARC-030). The spec pins no CPU values; the CPU requests
-# required by the Kyverno policy `require-resources` (SEC-090) are added by W3-T12.
+# Memory requests and limits per component on `local` (ARC-030). The spec pins no CPU values. CPU values for Rootline
+# services are set by the tasks that deploy them, before W3-T12 enforces SEC-090 `require-resources`; W3-T12 sets CPU
+# only for the `rootline-pg` Cluster (ADR 0046 T7).
 resources:
   console:       {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
   api:           {requests: {memory: 192Mi}, limits: {memory: 384Mi}}

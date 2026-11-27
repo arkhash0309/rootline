@@ -132,7 +132,10 @@ def test_namespaces_default_deny_and_dns() -> None:
 
 
 def test_apps_contract_matches_plan() -> None:
-    """INF-020: the values contract of the root chart (every later wave edits `apps`)."""
+    """INF-020, ADR 0046 T1: the values contract of the root chart (every later wave edits `apps`).
+
+    Only `prometheus-crds` may carry `repo` and `chartVersion` (removed in W1-P3 integration step 3).
+    """
     values = yaml.safe_load((REPO / "deploy/root/values.yaml").read_text())
     top = {k: v for k, v in values.items() if k != "apps"}
     assert top == {
@@ -147,6 +150,13 @@ def test_apps_contract_matches_plan() -> None:
         "artifactsBucket": "",
         "ingressIP": "",
     }
+    for name, app in values["apps"].items():
+        if name != "prometheus-crds":
+            assert "repo" not in app, name
+            assert "chartVersion" not in app, name
+    prom_app = values["apps"]["prometheus-crds"]
+    assert prom_app["repo"] == "https://prometheus-community.github.io/helm-charts"
+    assert prom_app["chartVersion"] == "33.0.2"
     waves = {name: (a["enabled"], a["wave"]) for name, a in values["apps"].items()}
     assert waves == {
         "namespaces": (True, -4),
@@ -171,6 +181,7 @@ def test_apps_contract_matches_plan() -> None:
 
 @pytest.mark.parametrize("env", ENVS)
 def test_application_sources(env: str) -> None:
+    """INF-020, ADR 0046 T1, T2, T3: sources, values paths and pinned revisions of every Application."""
     versions = yaml.safe_load((REPO / "versions.yaml").read_text())
     apps = {a["metadata"]["name"]: a for a in render(env)}
     # upstream chart: pinned chart version from versions.yaml, values file in this repository
@@ -192,6 +203,12 @@ def test_application_sources(env: str) -> None:
     assert prom["chart"] == "prometheus-operator-crds"
     assert prom["targetRevision"] == versions["prometheus-operator-crds"]["chart"]
     assert prom["repoURL"] == versions["prometheus-operator-crds"]["repo"]
+    # T2: every Application with `sources` takes its values from deploy/upstream/<versionKey>/
+    app_values = yaml.safe_load((REPO / "deploy/root/values.yaml").read_text())["apps"]
+    for name, app in apps.items():
+        if "sources" in app["spec"]:
+            expected = f"$values/deploy/upstream/{app_values[name]['versionKey']}/values-{env}.yaml"
+            assert app["spec"]["sources"][0]["helm"]["valueFiles"][0] == expected, name
     # Gateway API CRDs from the pinned release tag
     gw = apps["gateway-api-crds"]["spec"]["source"]
     assert gw["repoURL"] == "https://github.com/kubernetes-sigs/gateway-api"
@@ -269,6 +286,7 @@ def test_k3d_config() -> None:
 
 
 def test_traefik_helmchartconfig() -> None:
+    """INF-030, ADR 0046 T9: chart-default Gateway off and TLS on entry point websecure via `http.tls`."""
     cfg = yaml.safe_load((REPO / "infra/k3d/manifests/traefik-config.yaml").read_text())
     assert cfg["apiVersion"] == "helm.cattle.io/v1"
     assert cfg["kind"] == "HelmChartConfig"
@@ -284,6 +302,7 @@ def test_traefik_helmchartconfig() -> None:
 
 @pytest.mark.parametrize("env", ["local", "ci"])
 def test_platform_config_tls_and_dns(env: str) -> None:
+    """INF-040, SEC-011, ADR 0046 T9: Gateway listeners use the Traefik entry point ports 8000 and 8443."""
     docs = by_kind_name(tmpl("platform-config", env, "--set", "global.domain=127.0.0.1.sslip.io"))
     assert docs[("ClusterIssuer", "selfsigned")]["spec"] == {"selfSigned": {}}
     ca = docs[("Certificate", "rootline-local-ca")]
@@ -305,6 +324,8 @@ def test_platform_config_tls_and_dns(env: str) -> None:
     listeners = {entry["name"]: entry for entry in gw["spec"]["listeners"]}
     assert listeners["http"]["port"] == 8000
     assert listeners["https"]["port"] == 8443
+    assert listeners["http"]["protocol"] == "HTTP"
+    assert listeners["https"]["protocol"] == "HTTPS"
     assert listeners["https"]["tls"] == {
         "mode": "Terminate",
         "certificateRefs": [{"name": "rootline-wildcard-tls"}],
@@ -321,12 +342,16 @@ def test_platform_config_tls_and_dns(env: str) -> None:
 
 
 def test_platform_config_gke_differences() -> None:
+    """SEC-011, ADR 0046 T5: on gke no copy-ca Job, copy-ca-kustomization or rootline-ca (W7-T02 adds it)."""
     docs = by_kind_name(tmpl("platform-config", "gke", "--set", "global.domain=1-2-3-4.sslip.io"))
     assert ("ClusterIssuer", "selfsigned") not in docs
     assert ("Certificate", "rootline-local-ca") not in docs
     assert ("ConfigMap", "coredns-custom") not in docs
     assert ("ClusterSecretStore", "bootstrap") not in docs
     assert docs[("Gateway", "rootline")]["metadata"]["namespace"] == "traefik"
+    assert ("Job", "copy-ca") not in docs
+    assert ("ConfigMap", "copy-ca-kustomization") not in docs
+    assert ("ConfigMap", "rootline-ca") not in docs
     # the pg-roles store and the generators exist in every environment (PG-10)
     assert ("ClusterSecretStore", "pg-roles") in docs
     assert ("Password", "password-48") in docs
@@ -440,7 +465,7 @@ def test_copy_ca_image_matches_versions_yaml() -> None:
 
 
 def test_eso_stores_and_generators() -> None:
-    """SEC-100, PG-10."""
+    """SEC-100, PG-10, ADR 0046 T4: generators exist in the four namespaces that hold generated Secrets."""
     docs = by_kind_name(tmpl("platform-config", "local"))
     boot = docs[("ClusterSecretStore", "bootstrap")]["spec"]["provider"]["kubernetes"]
     assert boot["remoteNamespace"] == "rootline-secrets"
@@ -700,7 +725,7 @@ def test_upstream_readme_lists_every_chart_repo() -> None:
 
 
 def test_render_manifests_script() -> None:
-    """The script renders every environment as one YAML stream and fails on a broken chart."""
+    """INF-020, GEN-012, ADR 0046 T8: renders every env as one YAML stream; `--allow-missing` skips charts."""
     result = subprocess.run(  # noqa: S603 - fixed argument list, no shell (GEN-041)
         [sys.executable, str(REPO / "scripts/render_manifests.py"), "--allow-missing"],
         check=False,
