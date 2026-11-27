@@ -12,3 +12,5 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Added workload render script, transforms and tests (W1-T09 steps 1-5; real render in W1-S3)
 - [agent] Applied ADR 0044 (PG-25) to the workload render: keep referenced ServiceAccount and ConfigMaps (W1-T09 review fix)
 - [agent] Added observability and postgres charts and the render_versions Chart.yaml step (W1-T11)
+- [agent] Added ci.yml, scripts/ci_changed_files.py, ruleset JSON files and the Rulesets runbook section (W1-T14; ruleset creation O-3 and the first CI run are deferred)
+- [agent] Planner recorded ADR 0045 / PG-26: W1-T14 CI and ruleset decisions (docs/w1-t14-ci-decisions)
