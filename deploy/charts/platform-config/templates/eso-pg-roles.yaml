@@ -1,0 +1,77 @@
+# PG-10: ClusterSecretStore `pg-roles` reads the CNPG role Secrets in rootline-data; one ExternalSecret per role
+# generates the password once (refreshInterval "0") from the Password generator password-48.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-pg-reader
+  namespace: rootline-data
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-pg-reader
+  namespace: rootline-data
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames:
+      {{- range .Values.pgRoles }}
+      - pg-{{ . | replace "_" "-" }}
+      {{- end }}
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-pg-reader
+  namespace: rootline-data
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-pg-reader
+subjects:
+  - kind: ServiceAccount
+    name: eso-pg-reader
+    namespace: rootline-data
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: pg-roles
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: rootline-data
+      auth:
+        serviceAccount:
+          name: eso-pg-reader
+          namespace: rootline-data
+      server:
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+          namespace: rootline-data
+{{- range .Values.pgRoles }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: pg-{{ . | replace "_" "-" }}
+  namespace: rootline-data
+spec:
+  refreshInterval: "0"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: password-48
+  target:
+    name: pg-{{ . | replace "_" "-" }}
+    template:
+      type: kubernetes.io/basic-auth
+      data:
+        username: {{ . }}
+        password: {{ "{{ .password }}" | quote }}
+{{- end }}

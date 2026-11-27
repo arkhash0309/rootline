@@ -1,0 +1,13 @@
+# Overrides for env `gke` (WKL-023: Prometheus 1 d, Loki 24 h, Tempo 24 h). The collector stays a
+# DaemonSet (unchanged from values.yaml).
+kube-prometheus-stack:
+  prometheus:
+    prometheusSpec:
+      retention: 1d
+loki:
+  loki:
+    limits_config:
+      retention_period: 24h
+tempo:
+  tempo:
+    retention: 24h

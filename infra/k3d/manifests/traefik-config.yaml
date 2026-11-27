@@ -1,0 +1,18 @@
+# HelmChartConfig for the Traefik bundled with k3s (INF-030).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata: {name: traefik, namespace: kube-system}
+spec:
+  valuesContent: |-
+    deployment:
+      replicas: 1
+    gateway:
+      enabled: false
+    providers:
+      kubernetesGateway:
+        enabled: true
+    ports:
+      websecure:
+        http:
+          tls:
+            enabled: true

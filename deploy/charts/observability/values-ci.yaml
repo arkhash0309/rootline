@@ -1,0 +1,12 @@
+# Overrides for env `ci` (kind, overview W6-T02): only Prometheus and Alertmanager run. Loki, Tempo and
+# the collector are off through the `condition:` keys in Chart.yaml; Prometheus keeps 6 h.
+kube-prometheus-stack:
+  prometheus:
+    prometheusSpec:
+      retention: 6h
+loki:
+  enabled: false
+tempo:
+  enabled: false
+opentelemetry-collector:
+  enabled: false

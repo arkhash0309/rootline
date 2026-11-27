@@ -1,0 +1,15 @@
+# external-secrets chart values (W1-T10 Step 7). Requests: controller 32 Mi, webhook 16 Mi, cert controller 16 Mi.
+installCRDs: true
+resources:
+  requests:
+    memory: 32Mi
+webhook:
+  create: true
+  resources:
+    requests:
+      memory: 16Mi
+certController:
+  create: true
+  resources:
+    requests:
+      memory: 16Mi

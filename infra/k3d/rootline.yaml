@@ -1,0 +1,20 @@
+# k3d Simple config for the local cluster (INF-030).
+# Two placeholders are substituted at runtime by scripts/up.py (W1-T12), which writes the result to
+# infra/k3d/rootline.generated.yaml and passes that file to `k3d cluster create --config`:
+#   <versions.k3s> -> the `k3s` value of versions.yaml with `+` replaced by `-` (v1.36.6+k3s1 -> v1.36.6-k3s1)
+#   <repo>         -> the absolute checkout path inside WSL (/home/arkhash0309/projects/rootline)
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata: {name: rootline}
+servers: 1
+agents: 0
+image: rancher/k3s:<versions.k3s>
+ports:
+  - {port: 80:80, nodeFilters: [loadbalancer]}
+  - {port: 443:443, nodeFilters: [loadbalancer]}
+volumes:
+  - {volume: "<repo>/infra/k3d/manifests:/var/lib/rancher/k3s/server/manifests/rootline", nodeFilters: [server:0]}
+options:
+  k3s:
+    extraArgs:
+      - {arg: "--kubelet-arg=max-pods=150", nodeFilters: [server:0]}

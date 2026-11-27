@@ -1,0 +1,16 @@
+# kyverno chart values (W1-T10 Step 7). Policies are added in W3-T12.
+admissionController:
+  replicas: 1
+  container:
+    resources:
+      requests:
+        memory: 160Mi
+backgroundController:
+  replicas: 1
+  resources:
+    requests:
+      memory: 96Mi
+cleanupController:
+  enabled: false
+reportsController:
+  enabled: false

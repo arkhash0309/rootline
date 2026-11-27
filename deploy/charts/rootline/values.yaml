@@ -1,0 +1,32 @@
+global:
+  env: local                    # local | gke | ci (set by the root chart)
+  domain: 127.0.0.1.sslip.io
+  gcpProject: ""
+  k8sIssuer: https://kubernetes.default.svc.cluster.local
+  artifactsBucket: ""
+  ingressIP: ""
+
+image:
+  registry: rootline            # evaluated with `tpl` by rootline.image, so values-gke.yaml may use {{ .Values.global.gcpProject }}
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Memory requests and limits per component on `local` (ARC-030). The spec pins no CPU values. CPU values for Rootline
+# services are set by the tasks that deploy them, before W3-T12 enforces SEC-090 `require-resources`; W3-T12 sets CPU
+# only for the `rootline-pg` Cluster (ADR 0046 T7).
+resources:
+  console:       {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
+  api:           {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
+  agent:         {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
+  gate:          {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+  opa:           {requests: {memory: 64Mi},  limits: {memory: 128Mi}}
+  faultlab:      {requests: {memory: 160Mi}, limits: {memory: 320Mi}}
+  mcp-telemetry: {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
+  mcp-k8s:       {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+  mcp-gitops:    {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+
+security:
+  delegationMode: act           # SEC-040: act | azp
+
+llm:
+  clusterBudgetUsd: 6
