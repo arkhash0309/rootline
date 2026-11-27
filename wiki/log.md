@@ -10,3 +10,4 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Added rootline_common foundation modules (W1-T07)
 - [agent] Added workload render script, transforms and tests (W1-T09 steps 1-5; real render in W1-S3)
 - [agent] Applied ADR 0044 (PG-25) to the workload render: keep referenced ServiceAccount and ConfigMaps (W1-T09 review fix)
+- [agent] Added observability and postgres charts and the render_versions Chart.yaml step (W1-T11)

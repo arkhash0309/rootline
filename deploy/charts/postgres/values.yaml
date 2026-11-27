@@ -1,0 +1,25 @@
+# Postgres chart values (DB-001, DB-002). `global.env` is set by the root chart (`local`, `gke`, `ci`).
+global:
+  env: local
+# Image: versions.yaml key `postgres-image` as `<repo>:<version>@<digest>` (GEN-050). Checked against
+# versions.yaml by tests/repo/test_observability_values.py::test_cnpg_image_pinned_by_digest.
+image: ghcr.io/cloudnative-pg/postgresql:16@sha256:34cd4159d07b3410a1b29da35072e2e927a0905e717a61afa3814624a2e8859a
+storage:
+  size: 5Gi
+  storageClass: local-path
+resources:
+  requests: {memory: 384Mi}
+  limits: {memory: 768Mi}
+parameters:
+  shared_buffers: 128MB
+  max_connections: "100"
+  log_min_duration_statement: "500"
+# Managed roles (DB-002). Password Secret of role R is `pg-<R with _ replaced by ->` in namespace
+# rootline-data (type kubernetes.io/basic-auth), created by the ESO Password generators (PG-10).
+roles:
+  - rootline_migrator
+  - rootline_api
+  - rootline_agent
+  - rootline_faultlab
+  - rootline_console
+  - keycloak
