@@ -1,0 +1,83 @@
+version: "3"
+
+dotenv: [".env.local"]
+
+env:
+  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt        # Python/httpx in WSL trust the local CA after task trust-ca (PG-17)
+  NODE_EXTRA_CA_CERTS: /usr/local/share/ca-certificates/rootline-ca.crt
+
+vars:
+  PY: uv run python
+  REVISION: '{{.REVISION | default "develop"}}'
+
+tasks:
+  doctor:
+    desc: Check prerequisites, Docker memory, .env.local keys and cluster memory requests (GEN-060)
+    cmds: ["{{.PY}} scripts/doctor.py"]
+
+  up:
+    desc: Create k3d cluster rootline and deploy everything via ArgoCD (GEN-060, INF-030)
+    cmds: ["{{.PY}} scripts/up.py --revision {{.REVISION}}"]
+
+  down:
+    desc: Delete k3d cluster rootline (keeps .env.local and data/)
+    cmds: ["k3d cluster delete rootline"]
+
+  stop:
+    desc: Stop the k3d cluster (frees RAM for Ollama)
+    cmds: ["k3d cluster stop rootline"]
+
+  start:
+    desc: Start the k3d cluster
+    cmds: ["k3d cluster start rootline"]
+
+  images:
+    desc: Build all service images with tag dev and import them into k3d
+    cmds: ["{{.PY}} scripts/build_images.py --tag dev --import-k3d rootline"]
+
+  secrets:local:
+    desc: Create rootline-secrets/rootline-bootstrap and ArgoCD repo secrets from .env.local (SEC-100, PG-9)
+    cmds: ["{{.PY}} scripts/secrets_local.py"]
+
+  trust-ca:
+    desc: Trust the local CA in WSL (system store + NSS) and in the Windows user Root store (INF-031, GEN-060)
+    cmds: ["{{.PY}} scripts/trust_ca.py {{.CLI_ARGS}}"]
+
+  test:
+    desc: All unit tests (Python, console, OPA)
+    cmds:
+      - uv run pytest -m "not integration and not k8s" --cov --cov-report=term-missing
+      - "{{.PY}} scripts/run_if_exists.py apps/console/package.json -- npm --prefix apps/console run test"
+      - "{{.PY}} scripts/run_if_exists.py policies/opa/rootline -- opa test policies/opa -v"
+
+  test:integration:
+    desc: Integration tests (Docker required)
+    cmds: [uv run pytest -m integration -v]
+
+  lint:
+    desc: ruff, mypy, eslint, tsc, helm lint, kubeconform, terraform fmt, tflint
+    cmds: ["{{.PY}} scripts/lint.py"]
+
+  wiki:lint:
+    desc: Wiki lint (WIK-021)
+    cmds: ["{{.PY}} scripts/wiki_lint.py"]
+
+  versions:render:
+    desc: Regenerate files derived from versions.yaml
+    cmds: ["{{.PY}} scripts/render_versions.py"]
+
+  swarm:validate:
+    desc: Validate the execution schedule (overview §7.2)
+    cmds: ["{{.PY}} scripts/swarm_schedule.py validate"]
+
+  swarm:next:
+    desc: Print the next runnable stage of a week (task swarm:next -- --week N)
+    cmds: ["{{.PY}} scripts/swarm_schedule.py next {{.CLI_ARGS}}"]
+
+  integrate:gate:
+    desc: Run integration gate checks G1-G11 (task integrate:gate -- --stage W2-P1 [--branch ref] [--pr-body file])
+    cmds: ["{{.PY}} scripts/integration_gate.py {{.CLI_ARGS}}"]
+
+  smoke:cluster:
+    desc: Run cluster smoke check G12 against k3d-rootline
+    cmds: ["{{.PY}} scripts/cluster_smoke.py {{.CLI_ARGS}}"]
