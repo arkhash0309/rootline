@@ -1,0 +1,21 @@
+# Defaults; the root chart overrides every `global.*` key through Helm parameters (INF-020).
+global:
+  env: local                    # local | gke | ci
+  domain: 127.0.0.1.sslip.io
+  gcpProject: ""
+  k8sIssuer: https://kubernetes.default.svc.cluster.local
+  artifactsBucket: ""
+  ingressIP: ""
+
+# Namespaces that hold ExternalSecrets using the Password generators (SEC-100 inventory: rootline-data for the
+# DB roles, rootline, keycloak and observability for the generated application secrets).
+generatorNamespaces: [rootline-data, rootline, keycloak, observability]
+
+# CNPG managed roles (DB-002). The Kubernetes Secret of role <r> is `pg-<r with _ replaced by ->`.
+pgRoles:
+  - rootline_migrator
+  - rootline_api
+  - rootline_agent
+  - rootline_faultlab
+  - rootline_console
+  - keycloak

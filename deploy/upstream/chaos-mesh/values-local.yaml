@@ -1,0 +1,19 @@
+# chaos-mesh chart values (W1-T10 Step 7). Deployed in `local` only (root values `envs: [local]`).
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/k3s/containerd/containerd.sock
+  resources:
+    requests:
+      memory: 96Mi
+dnsServer:
+  create: true
+  resources:
+    requests:
+      memory: 32Mi
+dashboard:
+  create: false
+controllerManager:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: 128Mi

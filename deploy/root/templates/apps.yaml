@@ -1,0 +1,66 @@
+{{- $versions := .Files.Get "files/versions.yaml" | fromYaml }}
+{{- range $name, $app := .Values.apps }}
+{{- if include "rootline.root.appEnabled" (dict "app" $app "env" $.Values.env) }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $name }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ $app.wave | quote }}
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: {{ if and (eq $app.kind "env-repo") (index $.Values.apps "argocd-accounts").enabled }}rootline-workload{{ else }}default{{ end }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ $app.namespace | default (ternary "shop" "argocd" (eq $app.kind "env-repo")) }}
+  {{- if eq $app.kind "local-chart" }}
+  source:
+    repoURL: {{ $.Values.repoURL }}
+    targetRevision: {{ $.Values.targetRevision }}
+    path: {{ $app.path }}
+    helm:
+      valueFiles: [values.yaml, values-{{ $.Values.env }}.yaml]
+      ignoreMissingValueFiles: true
+      parameters:
+        {{- include "rootline.root.globalParameters" $ | nindent 8 }}
+  {{- else if eq $app.kind "upstream" }}
+  {{- $v := required (printf "deploy/root/files/versions.yaml has no key %s" $app.versionKey) (index $versions $app.versionKey) }}
+  sources:
+    - repoURL: {{ $v.repo }}
+      chart: {{ $app.chart }}
+      targetRevision: {{ $v.chart | quote }}
+      helm:
+        valueFiles:
+          - $values/deploy/upstream/{{ $app.versionKey }}/values-{{ $.Values.env }}.yaml
+        ignoreMissingValueFiles: true
+    - repoURL: {{ $.Values.repoURL }}
+      targetRevision: {{ $.Values.targetRevision }}
+      ref: values
+  {{- else if eq $app.kind "url" }}
+  {{- $v := index $versions $app.versionKey }}
+  source:
+    repoURL: https://github.com/kubernetes-sigs/gateway-api
+    targetRevision: v{{ $v }}
+    path: config/crd/standard
+  {{- else if eq $app.kind "env-repo" }}
+  source:
+    repoURL: {{ $.Values.envRepoURL }}
+    targetRevision: {{ $.Values.envRepoRevision }}
+    path: {{ $app.path }}
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: load-generator
+      jsonPointers: [/spec/template/spec/containers/0/env]
+  {{- end }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: {{ ne $app.kind "env-repo" }}
+    {{- if ne $app.kind "env-repo" }}
+    syncOptions: [CreateNamespace=false, ServerSideApply=true]
+    {{- end }}
+{{- end }}
+{{- end }}
