@@ -23,7 +23,7 @@ apps:
   traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
   platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
   postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
-  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability}
+  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability, namespace: observability}
   keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak}
   argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts}
   rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline}

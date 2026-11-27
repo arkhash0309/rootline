@@ -59,6 +59,9 @@ spec:
     automated:
       prune: true
       selfHeal: {{ ne $app.kind "env-repo" }}
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
     {{- if ne $app.kind "env-repo" }}
     syncOptions: [CreateNamespace=false, ServerSideApply=true]
     {{- end }}
