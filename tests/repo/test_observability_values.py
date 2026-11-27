@@ -56,30 +56,6 @@ def render_cached(chart: str, env: str) -> tuple[dict[str, Any], ...]:
     return tuple(d for d in yaml.safe_load_all(out) if d)
 
 
-# The collector chart 0.183.2 rewrites component ids to the canonical names of collector 0.165
-# (aliases of the names used in spec WKL-020). Tests compare using the spec names.
-CANONICAL_ALIASES = {
-    "otlp_grpc": "otlp",
-    "otlp_http": "otlphttp",
-    "k8s_attributes": "k8sattributes",
-    "file_log": "filelog",
-}
-
-
-def canonical_component_ids(node: Any) -> Any:
-    """Return `node` with every component id (dict key or list item) mapped to its spec name."""
-    if isinstance(node, dict):
-        return {_spec_id(k): canonical_component_ids(v) for k, v in node.items()}
-    if isinstance(node, list):
-        return [_spec_id(v) if isinstance(v, str) else canonical_component_ids(v) for v in node]
-    return node
-
-
-def _spec_id(component_id: str) -> str:
-    kind, sep, name = component_id.partition("/")
-    return CANONICAL_ALIASES.get(kind, kind) + sep + name
-
-
 def tmpl(chart: str, env: str) -> Docs:
     return list(render_cached(chart, env))
 
@@ -139,32 +115,84 @@ def test_no_grafana() -> None:
         assert not any("grafana" in n for _, n in names)
 
 
-def test_collector_pipelines() -> None:
-    """WKL-020: collector Service name, DaemonSet, pipelines and filelog include patterns."""
+def test_collector_names() -> None:
+    """ADR 0046 O1 and WKL-020: DaemonSet `otel-collector-agent`, Service `otel-collector` (4317, 4318)."""
     docs = tmpl("observability", "local")
-    names = {(d["kind"], d["metadata"]["name"]) for d in docs}
-    assert {("Service", "otel-collector"), ("DaemonSet", "otel-collector-agent")} <= names
+    assert [d["metadata"]["name"] for d in of_kind(docs, "DaemonSet")] == ["otel-collector-agent"]
+    service = next(d for d in of_kind(docs, "Service") if d["metadata"]["name"] == "otel-collector")
+    assert {p["port"] for p in service["spec"]["ports"]} == {4317, 4318}
+    deployments = {d["metadata"]["name"] for d in of_kind(docs, "Deployment")}
+    assert not {n for n in deployments if "otel-collector" in n}
+
+
+def test_collector_pipelines() -> None:
+    """ADR 0046 O2 and WKL-020: component names, pipelines and file_log include patterns."""
+    docs = tmpl("observability", "local")
     cm = next(d for d in of_kind(docs, "ConfigMap") if d["metadata"]["name"] == "otel-collector-agent")
-    cfg = canonical_component_ids(yaml.safe_load(cm["data"]["relay"]))
+    cfg = yaml.safe_load(cm["data"]["relay"])
+    assert set(cfg["receivers"]) == {"file_log", "otlp"}
+    assert set(cfg["processors"]) == {"batch", "k8s_attributes", "memory_limiter"}
+    assert set(cfg["exporters"]) == {"otlp_grpc/tempo", "otlp_http/loki", "otlp_http/prometheus"}
+    processors = ["memory_limiter", "k8s_attributes", "batch"]
     pipelines = cfg["service"]["pipelines"]
-    assert pipelines["traces"]["exporters"] == ["otlp/tempo"]
-    assert pipelines["metrics"]["exporters"] == ["otlphttp/prometheus"]
-    assert pipelines["logs"]["exporters"] == ["otlphttp/loki"]
-    for name in ("traces", "metrics", "logs"):
-        assert pipelines[name]["processors"][0] == "memory_limiter"
-        assert "k8sattributes" in pipelines[name]["processors"]
-        assert pipelines[name]["processors"][-1] == "batch"
-    assert pipelines["logs"]["receivers"] == ["otlp", "filelog"]
-    assert cfg["receivers"]["filelog"]["include"] == [
+    assert pipelines["traces"] == {
+        "receivers": ["otlp"],
+        "processors": processors,
+        "exporters": ["otlp_grpc/tempo"],
+    }
+    assert pipelines["metrics"] == {
+        "receivers": ["otlp"],
+        "processors": processors,
+        "exporters": ["otlp_http/prometheus"],
+    }
+    assert pipelines["logs"] == {
+        "receivers": ["otlp", "file_log"],
+        "processors": processors,
+        "exporters": ["otlp_http/loki"],
+    }
+    assert cfg["receivers"]["file_log"]["include"] == [
         "/var/log/pods/shop_*/*/*.log",
         "/var/log/pods/rootline_*/*/*.log",
     ]
-    assert cfg["exporters"]["otlp/tempo"]["endpoint"] == "tempo.observability.svc:4317"
+    assert cfg["exporters"]["otlp_grpc/tempo"]["endpoint"] == "tempo.observability.svc:4317"
     assert (
-        cfg["exporters"]["otlphttp/prometheus"]["endpoint"]
+        cfg["exporters"]["otlp_http/prometheus"]["endpoint"]
         == "http://prometheus-operated.observability.svc:9090/api/v1/otlp"
     )
-    assert cfg["exporters"]["otlphttp/loki"]["endpoint"] == "http://loki.observability.svc:3100/otlp"
+    assert cfg["exporters"]["otlp_http/loki"]["endpoint"] == "http://loki.observability.svc:3100/otlp"
+
+
+def test_collector_host_paths() -> None:
+    """ADR 0046 O3 and SEC-090: one read-only hostPath /var/log/pods; hardened UID 0 container."""
+    ds = next(d for d in of_kind(tmpl("observability", "local"), "DaemonSet"))
+    spec = ds["spec"]["template"]["spec"]
+    host_volumes = [v for v in spec["volumes"] if "hostPath" in v]
+    assert [v["hostPath"] for v in host_volumes] == [{"path": "/var/log/pods", "type": "Directory"}]
+    for container in spec["containers"]:
+        for mount in container.get("volumeMounts", []):
+            if mount["name"] == host_volumes[0]["name"]:
+                assert mount["mountPath"] == "/var/log/pods" and mount["readOnly"] is True
+        assert container["securityContext"] == {
+            "runAsUser": 0,
+            "runAsGroup": 0,
+            "runAsNonRoot": False,
+            "allowPrivilegeEscalation": False,
+            "readOnlyRootFilesystem": True,
+            "capabilities": {"drop": ["ALL"]},
+            "seccompProfile": {"type": "RuntimeDefault"},
+        }
+    assert "/var/lib/docker/containers" not in str(spec)
+
+
+def test_no_unreachable_control_plane_targets() -> None:
+    """ADR 0046 O5: no Service or ServiceMonitor for components that are unreachable on k3s and GKE."""
+    docs = tmpl("observability", "local")
+    scraped = [d["metadata"]["name"] for d in docs if d["kind"] in ("Service", "ServiceMonitor")]
+    for forbidden in ("kube-controller-manager", "kube-etcd", "kube-scheduler", "kube-proxy"):
+        assert not [n for n in scraped if forbidden in n]
+    monitors = [d["metadata"]["name"] for d in of_kind(docs, "ServiceMonitor")]
+    for suffix in ("-kubelet", "-apiserver", "-coredns"):
+        assert any(n.endswith(suffix) for n in monitors)
 
 
 def _pod_specs(docs: Docs) -> Iterator[tuple[str, dict[str, Any]]]:
@@ -177,8 +205,8 @@ def _pod_specs(docs: Docs) -> Iterator[tuple[str, dict[str, Any]]]:
 
 
 def test_no_host_ports_and_no_jaeger_zipkin_ports() -> None:
-    """ARC-010 and WKL-020: namespace `observability` is PSS baseline, so no container port has a
-    non-zero hostPort; only OTLP ports 4317 and 4318 are exposed by the collector."""
+    """ARC-010 and WKL-020: PSS `baseline` (warn and audit on `observability`) forbids hostPort, so no
+    container port has a non-zero hostPort; the collector exposes only OTLP ports 4317 and 4318."""
     docs = tmpl("observability", "local")
     all_ports: list[tuple[str, int, str]] = []
     for workload, spec in _pod_specs(docs):
@@ -231,25 +259,61 @@ def test_tempo_metrics_generator() -> None:
     }
 
 
+def _flatten_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """Return the selector, direction, peers and ports of a single-rule NetworkPolicy."""
+    spec = policy["spec"]
+    direction = "ingress" if "ingress" in spec else "egress"
+    (rule,) = spec[direction]
+    return {
+        "selector": spec["podSelector"].get("matchLabels", {}),
+        "direction": direction,
+        "peers": rule.get("from", rule.get("to")),
+        "ports": [p["port"] for p in rule.get("ports", [])],
+    }
+
+
+def _ns(*names: str) -> list[dict[str, Any]]:
+    return [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": n}}} for n in names]
+
+
 def test_observability_network_policies() -> None:
-    """ARC-010: allow-rules for the default-deny observability namespace."""
-    policies = of_kind(tmpl("observability", "local"), "NetworkPolicy")
-    assert policies
-    assert {p["metadata"]["namespace"] for p in policies} == {"observability"}
-    ingress_ports = {
-        port["port"]
-        for p in policies
-        for rule in p["spec"].get("ingress", [])
-        for port in rule.get("ports", [])
+    """ADR 0046 O4 and ARC-010: the eight allow-rules of the default-deny observability namespace."""
+    policies = {p["metadata"]["name"]: p for p in of_kind(tmpl("observability", "local"), "NetworkPolicy")}
+    assert {p["metadata"]["namespace"] for p in policies.values()} == {"observability"}
+    assert set(policies) == {
+        "allow-same-namespace",
+        "allow-otlp-ingress",
+        "allow-query-ingress",
+        "allow-alertmanager-ingress",
+        "allow-operator-webhook-ingress",
+        "allow-egress-pods",
+        "allow-egress-apiserver",
+        "allow-egress-kubelet",
     }
-    assert ingress_ports >= {4317, 4318, 9090, 3100, 3200, 9093}
-    egress_ports = {
-        port["port"]
-        for p in policies
-        for rule in p["spec"].get("egress", [])
-        for port in rule.get("ports", [])
+    collector = {"app.kubernetes.io/name": "opentelemetry-collector", "component": "agent-collector"}
+    operator = {"app.kubernetes.io/name": "kube-prometheus-stack-prometheus-operator"}
+    anywhere = [{"ipBlock": {"cidr": "0.0.0.0/0"}}]
+    expected = {
+        "allow-same-namespace": ({}, "ingress", [{"podSelector": {}}], []),
+        "allow-otlp-ingress": (collector, "ingress", [{"namespaceSelector": {}}], [4317, 4318]),
+        "allow-query-ingress": ({}, "ingress", _ns("rootline", "observability"), [9090, 3100, 3200]),
+        "allow-alertmanager-ingress": ({}, "ingress", _ns("observability"), [9093]),
+        "allow-operator-webhook-ingress": (operator, "ingress", anywhere, [10250]),
+        "allow-egress-pods": ({}, "egress", [{"namespaceSelector": {}}], []),
+        "allow-egress-apiserver": ({}, "egress", anywhere, [443, 6443]),
+        "allow-egress-kubelet": ({"app.kubernetes.io/name": "prometheus"}, "egress", anywhere, [10250]),
     }
-    assert egress_ports >= {443, 6443}
+    for name, (selector, direction, peers, ports) in expected.items():
+        flat = _flatten_policy(policies[name])
+        assert flat == {"selector": selector, "direction": direction, "peers": peers, "ports": ports}, name
+    egress_10250 = [
+        name
+        for name, p in policies.items()
+        if any(
+            port["port"] == 10250 for rule in p["spec"].get("egress", []) for port in rule.get("ports", [])
+        )
+    ]
+    assert egress_10250 == ["allow-egress-kubelet"]
 
 
 def test_dependency_versions_match_versions_yaml() -> None:
@@ -349,9 +413,14 @@ def test_keycloak_database() -> None:
 
 
 def test_postgres_network_policies() -> None:
-    """ARC-010: 5432 from rootline and keycloak; operator namespace cnpg-system on 8000 and 5432."""
+    """ADR 0046 O4 and DB-001: 5432 from rootline and keycloak; cnpg-system on 8000 and 5432."""
     policies = of_kind(tmpl("postgres", "local"), "NetworkPolicy")
-    assert policies
+    assert {p["metadata"]["name"] for p in policies} == {
+        "allow-postgres-clients",
+        "allow-cnpg-operator",
+        "allow-same-namespace",
+        "allow-egress-apiserver",
+    }
     assert {p["metadata"]["namespace"] for p in policies} == {"rootline-data"}
     sources: dict[str, set[int]] = {}
     for p in policies:
@@ -372,3 +441,15 @@ def test_postgres_network_policies() -> None:
         for port in rule.get("ports", [])
     }
     assert egress_ports >= {443, 6443}
+
+
+def test_render_versions_chart_keys() -> None:
+    """ADR 0046 T1, T11 and GEN-050: operator CRDs row in the root chart; platform-config output."""
+    versions = load_versions()
+    root = yaml.safe_load((REPO / "deploy/root/files/versions.yaml").read_text(encoding="utf-8"))
+    assert root["prometheus-operator-crds"] == versions["prometheus-operator-crds"]
+    out = render_versions.render()
+    path = REPO / "deploy/charts/platform-config/files/versions.yaml"
+    assert (path in out) == (REPO / "deploy/charts/platform-config/Chart.yaml").exists()
+    if path in out:
+        assert yaml.safe_load(out[path]) == {"kubectl-image": versions["kubectl-image"]}

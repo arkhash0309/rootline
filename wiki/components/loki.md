@@ -38,4 +38,4 @@ Loki down: the collector buffers then drops logs; log queries return the MCP-005
 
 ## Last verified
 
-2026-11-27, 908e5ed. Verified by `helm template` of the chart `deploy/charts/observability` (`tests/repo/test_observability_values.py`, 20 checks plus `helm dependency build`); the stack has not been deployed to a cluster yet (that happens in W1-T12).
+2026-11-27, 908e5ed. Verified by `helm template` of the chart `deploy/charts/observability` (`tests/repo/test_observability_values.py`, 24 checks plus `helm dependency build`); the stack has not been deployed to a cluster yet (that happens in W1-T12).

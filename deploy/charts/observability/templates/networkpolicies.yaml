@@ -1,7 +1,8 @@
 # Allow-rules for namespace `observability`, which has a default-deny policy (ARC-010, chart
 # `namespaces`, W1-T10). Source namespaces are matched by the label kubernetes.io/metadata.name.
 # Every policy selects all pods (`podSelector: {}`); a rule limits only the destination ports.
-# Port 4317 is also used by Tempo's OTLP receiver (collector to Tempo), so the OTLP rule covers it.
+# Policy table: ADR 0046 O4. Only `allow-otlp-ingress`, `allow-operator-webhook-ingress` and
+# `allow-egress-kubelet` select a subset of pods; every other policy selects all pods.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -15,14 +16,17 @@ spec:
     - from:
         - podSelector: {}
 ---
-# OTLP from every namespace (workload and Rootline services to the collector; collector to Tempo).
+# OTLP from every namespace (workload and Rootline services) to the collector pods only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-otlp-ingress
   namespace: observability
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+      component: agent-collector
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -76,7 +80,9 @@ metadata:
   name: allow-operator-webhook-ingress
   namespace: observability
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kube-prometheus-stack-prometheus-operator
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -84,12 +90,12 @@ spec:
       ports:
         - {protocol: TCP, port: 10250}
 ---
-# Egress: scraping and pipelines reach pods in every namespace; Prometheus scrapes the kubelet
-# (10250) and the kube-apiserver; the collector's k8sattributes and the operator call the kube-apiserver.
+# Egress to pods in every namespace: scraping pod targets, collector to Tempo, Loki and Prometheus,
+# Alertmanager to the `api` webhook.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-egress-scrape
+  name: allow-egress-pods
   namespace: observability
 spec:
   podSelector: {}
@@ -97,9 +103,36 @@ spec:
   egress:
     - to:
         - namespaceSelector: {}
+---
+# kube-apiserver: 6443 is the k3s endpoint port, 443 the GKE one.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-apiserver
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
     - to:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports:
         - {protocol: TCP, port: 443}
         - {protocol: TCP, port: 6443}
+---
+# Prometheus scrapes the kubelet and cAdvisor on the node address (10250); no other pod may.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-kubelet
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
         - {protocol: TCP, port: 10250}

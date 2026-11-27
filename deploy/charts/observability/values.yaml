@@ -8,6 +8,10 @@ kube-prometheus-stack:
   nodeExporter: {enabled: false}
   crds: {enabled: false}                  # installed by the prometheus-crds Application (sync wave -3)
   defaultRules: {create: false}
+  kubeControllerManager: {enabled: false} # ADR 0046 O5: unreachable on k3s and GKE
+  kubeEtcd: {enabled: false}
+  kubeScheduler: {enabled: false}
+  kubeProxy: {enabled: false}
   kubeStateMetrics: {enabled: true}
   kube-state-metrics:
     resources: {requests: {memory: 64Mi}, limits: {memory: 192Mi}}
@@ -77,36 +81,61 @@ tempo:
 
 opentelemetry-collector:                  # WKL-020
   enabled: true
-  fullnameOverride: otel-collector        # Service name: otel-collector; DaemonSet name: otel-collector-agent (chart naming, see ADR decision pending from the planner)
+  fullnameOverride: otel-collector        # Service otel-collector; DaemonSet otel-collector-agent (ADR 0046 O1)
   mode: daemonset
   service: {enabled: true}                # the chart creates no Service in daemonset mode by default
   image: {repository: otel/opentelemetry-collector-contrib}
   command: {name: otelcol-contrib}
   presets:
     kubernetesAttributes: {enabled: true}
-    logsCollection: {enabled: true, includeCollectorLogs: false}
+    logsCollection: {enabled: false}      # ADR 0046 O3: the preset also mounts /var/lib/docker/containers
+  securityContext:                        # ADR 0046 O3: UID 0 reads the root:root 0640 pod log files
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+    seccompProfile: {type: RuntimeDefault}
+  extraVolumes:
+    - name: varlogpods
+      hostPath: {path: /var/log/pods, type: Directory}
+  extraVolumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
   resources: {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
-  ports:                                  # ARC-010: namespace observability is PSS baseline, which forbids hostPort
+  ports:                                  # PSS baseline checks (warn/audit) and Kyverno forbid hostPort
     otlp: {enabled: true, hostPort: 0}
     otlp-http: {enabled: true, hostPort: 0}
     jaeger-compact: {enabled: false}      # Jaeger and Zipkin receivers are outside WKL-020
     jaeger-thrift: {enabled: false}
     jaeger-grpc: {enabled: false}
     zipkin: {enabled: false}
-  config:
+  config:                                 # component names of chart 0.183.2 (ADR 0046 O2)
     receivers:
+      jaeger: null                        # null removes the chart-default components WKL-020 does not use
+      zipkin: null
+      prometheus: null
       otlp: {protocols: {grpc: {endpoint: "0.0.0.0:4317"}, http: {endpoint: "0.0.0.0:4318"}}}
-      filelog:
+      file_log:
         include: [/var/log/pods/shop_*/*/*.log, /var/log/pods/rootline_*/*/*.log]
+        start_at: end
+        include_file_path: true
+        include_file_name: false
+        retry_on_failure: {enabled: true}
+        operators:
+          - {type: container, id: container-parser, max_log_size: 102400}
     processors:
       memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20}
       batch: {}
     exporters:
-      otlp/tempo: {endpoint: "tempo.observability.svc:4317", tls: {insecure: true}}
-      otlphttp/prometheus: {endpoint: "http://prometheus-operated.observability.svc:9090/api/v1/otlp", tls: {insecure: true}}
-      otlphttp/loki: {endpoint: "http://loki.observability.svc:3100/otlp", tls: {insecure: true}}
+      debug: null
+      otlp_grpc/tempo: {endpoint: "tempo.observability.svc:4317", tls: {insecure: true}}
+      otlp_http/prometheus: {endpoint: "http://prometheus-operated.observability.svc:9090/api/v1/otlp", tls: {insecure: true}}
+      otlp_http/loki: {endpoint: "http://loki.observability.svc:3100/otlp", tls: {insecure: true}}
     service:
       pipelines:
-        traces: {receivers: [otlp], processors: [memory_limiter, k8sattributes, batch], exporters: [otlp/tempo]}
-        metrics: {receivers: [otlp], processors: [memory_limiter, k8sattributes, batch], exporters: [otlphttp/prometheus]}
-        logs: {receivers: [otlp, filelog], processors: [memory_limiter, k8sattributes, batch], exporters: [otlphttp/loki]}
+        traces: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_grpc/tempo]}
+        metrics: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_http/prometheus]}
+        logs: {receivers: [otlp, file_log], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_http/loki]}
