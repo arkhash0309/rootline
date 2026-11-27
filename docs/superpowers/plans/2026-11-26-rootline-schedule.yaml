@@ -38,7 +38,7 @@ weeks:
           - id: W1-T02
             branch: feat/w1-versions
             owns: [versions.yaml, scripts/versions_lib.py, scripts/check_versions.py, scripts/render_versions.py, tests/repo/test_versions.py, wiki/versions.md]
-            deferred_steps: [8]
+            deferred_steps: [8]   # Step 8 also writes wiki/versions.md "## GitHub Actions" from the ci.yml uses: lines (PG-26, ADR 0045 D6)
             deferred_to: W1-S3
           - id: W1-T03
             combined_with: [W1-T04]
@@ -79,7 +79,7 @@ weeks:
             owns: [deploy/charts/observability/**, deploy/charts/postgres/**, scripts/render_versions.py, tests/repo/test_observability_values.py, wiki/components/kube-prometheus-stack.md, wiki/components/loki.md, wiki/components/tempo.md, wiki/components/otel-collector.md, wiki/components/postgres.md]
           - id: W1-T14
             branch: feat/w1-ci
-            owns: [.github/workflows/ci.yml, .github/rulesets/**, scripts/ci_changed_files.py, wiki/runbooks/github-apps.md]
+            owns: [.github/workflows/ci.yml, .github/rulesets/**, scripts/ci_changed_files.py, tests/repo/test_ci_changed_files.py, wiki/runbooks/github-apps.md]   # test file added by PG-26 (ADR 0045 D1)
             deferred_steps: [2, 3]
             deferred_to: W1-S3
       - id: W1-S3

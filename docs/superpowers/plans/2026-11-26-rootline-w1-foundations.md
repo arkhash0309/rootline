@@ -620,6 +620,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 > **Amended 2026-11-27 after the W1-T02 implementation, per PG-22 (overview §5; ADR 0041).** The "Files" and "Interfaces" lists, the version table rows `pathspec`, `kubectl-image` and the image-row note, Steps 3, 4, 5, 6, 7, 8 and 9 were changed: Step 3's chart-row note, Step 4 (`scripts/check_versions.py`), Step 5 (pin date and chart-row rule), Step 6 (`pathspec`/`mypy`), Step 7 (`scripts/check_versions.py` run), Step 8 (the stub it replaces) and Step 9 (`wiki/versions.md` in `git add`). `wiki/versions.md` is in W1-T02's `owns` and in W1-T03's `excludes` in `docs/superpowers/plans/2026-11-26-rootline-schedule.yaml`. The `wiki/versions.md` stub is already on `develop` from the `docs/w1-t02-gaps` PR, and `feat/w1-versions` is rebased onto that `develop` before the ownership check ("W1-P1 integration steps" under "Execution schedule" above).
 
+> **Amended 2026-11-27 after the W1-T14 review, per PG-26 (overview §5; ADR 0045 D6).** Step 8 (deferred to W1-S3) also writes the section `## GitHub Actions` of `wiki/versions.md` from the `uses:` lines of `.github/workflows/ci.yml`. Nothing else in W1-T02 changed.
+
 **Files:**
 - Create: `versions.yaml`, `scripts/check_versions.py`, `scripts/render_versions.py`, `scripts/versions_lib.py`
 - Create (generated, committed): `deploy/root/files/versions.yaml`, `.github/versions.env`
@@ -974,7 +976,9 @@ Run: `uv run python scripts/render_versions.py`, then `uv run python scripts/che
 
 - [ ] **Step 8: Write `wiki/versions.md`** (deferred to stage W1-S3, overview §7.3; the stub is on `develop` from the `docs/w1-t02-gaps` PR, "Files" above, PG-22)
 
-Replace the stub's content with: a heading `# Versions`, the line `Pin date: <pin_date>`, a table `| Key | Version | Chart | Source command |` with one row per `versions.yaml` key, and a section `## Upgrade rule` quoting GEN-051.
+Replace the stub's content with: a heading `# Versions`, the line `Pin date: <pin_date>`, a table `| Key | Version | Chart | Source command |` with one row per `versions.yaml` key, a section `## GitHub Actions`, and a section `## Upgrade rule` quoting GEN-051.
+
+`## GitHub Actions` (amended 2026-11-27, PG-26, ADR 0045 D6): a table `| Action | Tag | Commit SHA |` copied from `.github/workflows/ci.yml` on `origin/develop` at the start of W1-S3 (W1-T14 merged with stage W1-P3, so the file exists). A `uses:` line is a line matching `^\s*(-\s+)?uses:`; every such line MUST match `^\s*(-\s+)?uses:\s+([\w.-]+/[\w.-]+)@([0-9a-f]{40})\s+#\s+(v\S+)\s*$` (group 2 = `Action`, group 3 = `Commit SHA`, group 4 = `Tag`). One row per distinct `Action`, rows sorted by `Action`. If `ci.yml` is absent, a `uses:` line does not match, or one `Action` appears with two different SHAs, Step 8 reports `STATUS: BLOCKED` with that line and the coordinator sends W1-T14 back to its implementer. Every PR merged after this step that changes an action SHA in `ci.yml` MUST update the matching row in the same PR (GEN-051).
 
 - [ ] **Step 9: Commit** (made at the end of step 7, per overview §7.3; step 8 commits separately on `feat/w1-versions-deferred`)
 
@@ -3943,12 +3947,59 @@ Test (`tests/repo/test_alert_rules.py`): render the chart, load the `PrometheusR
 
 ### Task W1-T14: CI workflow `ci.yml` and repository ruleset
 
-**Requirement IDs:** CI-001 (`ci.yml`), CI-002, GEN-020, WIK-020, O-3.
+**Requirement IDs:** CI-001 (`ci.yml`), CI-002, GEN-020, GEN-021, GEN-050, WIK-020, O-3, PG-21, PG-26.
 **Depends on:** W1-T01 … W1-T13 merged or on the same branch. **Branch:** `feat/w1-ci`.
 
+> **Amended 2026-11-27 after the W1-T14 review of `feat/w1-ci` at `8b2ce1c`, per PG-26 (overview §5; ADR 0045 decisions D1 to D6).** Changed: "Requirement IDs"; "Files" (the two ruleset files and `tests/repo/test_ci_changed_files.py`, D1); the new "Interfaces" section (`scripts/ci_changed_files.py`, D2, and the required tests, D1); the Step 1 `ci.yml` block (`name: ci / required`, D3; `V_UV` in all five `setup-uv` steps, the `versions.env` step in `contracts`, `wiki` and `security`, `V_TRIVY`, `V_GITLEAKS`, D5; the `wiki` job calls `scripts/ci_changed_files.py`, D2); the paragraph after the block (SHAs only in `ci.yml`, D6; Python versions, D5); Step 2 and Step 3 (verification commands, D3; `main.json` without `required_linear_history` and the full `develop.json`, D4). `tests/repo/test_ci_changed_files.py` is in W1-T14's `owns` in `docs/superpowers/plans/2026-11-26-rootline-schedule.yaml`. The W1-T14 implementer rebases `feat/w1-ci` onto the `develop` commit that contains ADR 0045 (`git fetch origin && git rebase origin/develop`, then `git push --force-with-lease origin feat/w1-ci`) before it runs `uv run python scripts/check_ownership.py --task W1-T14 --base origin/develop --branch HEAD`, because that script reads the schedule YAML from the checkout it runs in.
+
 **Files:**
-- Create: `.github/workflows/ci.yml`, `scripts/ci_changed_files.py`
+- Create: `.github/workflows/ci.yml`, `.github/rulesets/main.json`, `.github/rulesets/develop.json`, `scripts/ci_changed_files.py`
 - Modify: `wiki/runbooks/github-apps.md` (section `## Rulesets`)
+- Test: `tests/repo/test_ci_changed_files.py` (PG-26, ADR 0045 D1)
+
+**Interfaces (PG-26, ADR 0045 D2):**
+- Produces: CLI `uv run python scripts/ci_changed_files.py --base <ref> --head <ref> [--output <file>] [--repo <dir>]`, run from the repository root.
+
+| Option | Type | Required | Default | Meaning |
+|---|---|---|---|---|
+| `--base` | string (git revision) | yes | — | Base revision, for example `origin/develop` |
+| `--head` | string (git revision) | yes | — | Head revision, for example `HEAD` |
+| `--output` | file path | no | none: write to stdout | File to write (UTF-8, created or overwritten); a relative path resolves against the working directory |
+| `--repo` | directory path | no | `REPO = Path(__file__).resolve().parents[1]` (the repository that contains the script) | Repository passed to `git -C` |
+
+  Behaviour, in this order: (1) if `Path(repo).is_dir()` is `False`, fail with reason `repo not found: <dir>` without starting `git`; (2) run, through `scripts.proc.run(cmd, check=True, timeout=120)`, the argument list `["git", "-C", str(repo), "diff", "--name-only", "--diff-filter=ACMRD", "--no-renames", "-z", f"{base}...{head}"]` (no shell; three-dot form = changes on `<head>` since the merge base; a rename is listed as the deleted old path plus the added new path, PG-21); (3) split stdout on `"\0"`, drop empty strings, sort with `sorted()`, build `text = "".join(f"{p}\n" for p in paths)` (one path per line, LF, nothing else; empty change set = empty string); (4) with `--output`, write `text` in one `Path(output).write_text(text, encoding="utf-8")` call and print nothing to stdout; without `--output`, write `text` to stdout. It writes no other file, never changes the repository and makes no network call. It does not validate ref syntax; callers MUST pass refs that do not start with `-` (CI passes `origin/<base_ref>` and `HEAD`).
+
+| Case | When it occurs | stderr (exact, one line) | Exit |
+|---|---|---|---|
+| Success | `git` exits 0 and the output is written | nothing | 0 |
+| Repository missing | `--repo` is not an existing directory | `ci_changed_files: repo not found: <dir>` (`<dir>` = the `--repo` value as given, or `str(REPO)` for the default) | 2 |
+| `git` missing | starting `git` raises `FileNotFoundError` | `ci_changed_files: git missing` | 2 |
+| Timeout | `git` does not finish within 120 s (`subprocess.TimeoutExpired`) | `ci_changed_files: timeout` | 2 |
+| `git` exits non-zero | unknown revision, no merge base, `--repo` is not a git repository (`subprocess.CalledProcessError`) | `ci_changed_files: git failed: <msg>`; `<msg>` = first line of `exc.stderr.strip()`, or `exit <returncode>` when that is empty. Example (git `2.53.0`): `ci_changed_files: git failed: fatal: ambiguous argument 'origin/nope...HEAD': unknown revision or path not in the working tree.` | 2 |
+| `git` cannot start for another reason | starting `git` raises an `OSError` other than `FileNotFoundError` | `ci_changed_files: git failed: <str(exc)>` | 2 |
+| `git` output not UTF-8 | `UnicodeDecodeError` while decoding stdout | `ci_changed_files: git failed: <str(exc)>` | 2 |
+| Output not writable | `--output` given and `write_text` raises `OSError` | `ci_changed_files: output not writable: <path>` (`<path>` = the `--output` value as given); no retry, no cleanup of a partly written file | 2 |
+| Usage error | `--base` or `--head` missing, unknown option | argparse's two lines `usage: …` and `ci_changed_files.py: error: <message>` | 2 |
+
+  On every failure except "Output not writable", nothing is written to stdout and no `--output` file is created or changed. No other exception is caught: a traceback with exit 1 means a defect in the script.
+- Produces (Python, used by the tests): `class ChangedFilesError(Exception)` (`str(exc)` = the reason without the `ci_changed_files: ` prefix); `changed_files(base: str, head: str, repo: Path = REPO, *, timeout: int = 120) -> list[str]` (behaviour steps 1 to 3; raises `ChangedFilesError` with reason `repo not found: <dir>`, `git missing`, `timeout` or `git failed: <msg>`); `main(argv: Sequence[str] | None = None) -> int` (parses, calls `changed_files`, performs step 4, prints the stderr line and returns the exit code of the table).
+- Consumes: `scripts.proc.run` (W1-T06). The module starts with `sys.path.insert(0, str(Path(__file__).resolve().parents[1]))` before `from scripts.proc import run` (PG-21 item 9).
+
+**Required tests** (`tests/repo/test_ci_changed_files.py`, PG-26, ADR 0045 D1). The module docstring cites CI-001, WIK-020 and PG-21; every test docstring cites at least one of them. Each test builds a throw-away repository under `tmp_path` with `git` through `scripts.proc.run` (`git init -b main`, `git -c user.name=t -c user.email=t@example.invalid commit`), as `tests/repo/test_check_ownership.py` does, and makes no network call.
+
+| # | Test function | Set-up | Assertion |
+|---|---|---|---|
+| 1 | `test_lists_added_modified_deleted_sorted` | base commit with `b.txt`, `c.txt`; branch adds `z.txt`, `a.txt`, modifies `b.txt`, deletes `c.txt` | `changed_files("main", "HEAD", repo) == ["a.txt", "b.txt", "c.txt", "z.txt"]` |
+| 2 | `test_rename_lists_old_and_new_path` | branch runs `git mv old.txt new.txt` | result `== ["new.txt", "old.txt"]` |
+| 3 | `test_three_dot_ignores_later_base_commits` | after branching, `main` gains `late.txt`; branch adds `mine.txt` | result `== ["mine.txt"]` |
+| 4 | `test_empty_change_set` | repository with one commit on `main`; `main(["--base", "main", "--head", "main", "--repo", str(repo), "--output", str(out)])` | return value `0` and `out.read_text(encoding="utf-8") == ""` |
+| 5 | `test_output_file_format` | test 1's repository, `--output out.txt` | exit 0, file bytes `b"a.txt\nb.txt\nc.txt\nz.txt\n"`, `capsys` stdout `""` |
+| 6 | `test_stdout_without_output` | test 1's repository, no `--output` | exit 0, stdout `"a.txt\nb.txt\nc.txt\nz.txt\n"` |
+| 7 | `test_unknown_ref_exits_2` | `--base nope` | exit 2, stderr is one line starting `ci_changed_files: git failed: `, stdout `""` |
+| 8 | `test_repo_not_found_exits_2` | `--repo <tmp_path>/missing` | exit 2, stderr `f"ci_changed_files: repo not found: {tmp_path / 'missing'}\n"` |
+| 9 | `test_output_not_writable_exits_2` | `--output <tmp_path>/no-dir/out.txt` | exit 2, stderr `f"ci_changed_files: output not writable: {tmp_path / 'no-dir' / 'out.txt'}\n"` |
+| 10 | `test_git_missing_exits_2` | `monkeypatch.setattr(ci_changed_files, "run", <fake raising FileNotFoundError("git")>)` | exit 2, stderr `"ci_changed_files: git missing\n"` |
+| 11 | `test_timeout_exits_2` | fake `run` raising `subprocess.TimeoutExpired(cmd=["git"], timeout=120)` | exit 2, stderr `"ci_changed_files: timeout\n"` |
 
 - [ ] **Step 1: Write `ci.yml`**
 
@@ -4014,13 +4065,14 @@ jobs:
         with: {tflint_version: "v${{ env.V_TFLINT }}"}
       - run: tflint --recursive --chdir infra/terraform
       - uses: aquasecurity/trivy-action@0.33.1
-        with: {scan-type: config, scan-ref: infra/terraform, exit-code: "1", severity: "CRITICAL,HIGH"}
+        with: {version: "v${{ env.V_TRIVY }}", scan-type: config, scan-ref: infra/terraform, exit-code: "1", severity: "CRITICAL,HIGH"}
   manifests:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - run: cat .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.V_UV }}"}
       - uses: azure/setup-helm@v4
       - run: for c in deploy/root deploy/charts/*; do helm dependency build "$c" || true; helm lint "$c"; done
       - run: |
@@ -4032,7 +4084,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - run: cat .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.V_UV }}"}
       - uses: azure/setup-helm@v4
       - run: uv sync --all-packages --frozen
       - run: uv run python scripts/render_versions.py --check
@@ -4044,12 +4098,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
+      - run: cat .github/versions.env >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.V_UV }}"}
       - run: uv run python scripts/wiki_lint.py
       - if: github.event_name == 'pull_request'
         env: {GH_TOKEN: "${{ github.token }}"}
         run: |
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed.txt
+          uv run python scripts/ci_changed_files.py --base "origin/${{ github.base_ref }}" --head HEAD --output changed.txt
           gh pr view ${{ github.event.pull_request.number }} --json body --jq .body > body.txt
           uv run python scripts/wiki_lint.py --changed-files changed.txt --pr-body body.txt
   security:
@@ -4057,13 +4113,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
+      - run: cat .github/versions.env >> "$GITHUB_ENV"
       - uses: gitleaks/gitleaks-action@v2
-        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        env: {GITHUB_TOKEN: "${{ github.token }}", GITLEAKS_VERSION: "${{ env.V_GITLEAKS }}"}
       - uses: astral-sh/setup-uv@v6
+        with: {version: "${{ env.V_UV }}"}
       - run: uv export --all-packages --frozen --no-hashes > requirements.txt && uvx pip-audit -r requirements.txt
       - if: ${{ hashFiles('apps/console/package-lock.json') != '' }}
         run: npm --prefix apps/console audit --audit-level=high
   required:
+    name: ci / required    # check-run name = ruleset context `ci / required` (GEN-020, PG-26 D3)
     if: always()
     needs: [python, console, policy, infra, manifests, contracts, wiki, security]
     runs-on: ubuntu-24.04
@@ -4075,18 +4134,30 @@ jobs:
 
 `uv run ruff format --check .` stays exactly as written. Do not add a `uv run ruff format .` step and do not reformat any file in this task: Markdown files are excluded from ruff by `extend-exclude = ["*.md"]` in the root `pyproject.toml`, and `tests/repo/test_layout.py` is already ruff-formatted (both done by W1-T16 Step 0, PG-19). W1-T14 runs in the parallel stage W1-P3 and may change only its `owns` paths (overview §7.4); a repository-wide reformat would change files owned by W1-T09, W1-T10 and W1-T11 and fail gate check G1. If the `python` job's format step fails on a file, the failure belongs to the task that last changed that file (overview §7.8).
 
-`V_*` variables come from `.github/versions.env` (W1-T02). Third-party action versions above are the major versions current on the planning date; on the pin date use the latest major of each and pin it by commit SHA (`uses: owner/action@<40-hex sha> # vX.Y.Z`), recording the SHAs in `wiki/versions.md`. `scripts/check_contracts.py` is created in W4-T06.
+`V_*` variables come from `.github/versions.env` (W1-T02), loaded by `run: cat .github/versions.env >> "$GITHUB_ENV"` after `actions/checkout` in every job that uses one (PG-26, ADR 0045 D5): `setup-uv` gets `version: "${{ env.V_UV }}"` in all five jobs that use it (`python`, `manifests`, `contracts`, `wiki`, `security`); `trivy-action` gets `version: "v${{ env.V_TRIVY }}"` (with `v` prefix); `gitleaks-action` gets step env `GITLEAKS_VERSION: "${{ env.V_GITLEAKS }}"` (no `v` prefix). Only the `python` job runs `uv python install ${{ env.V_PYTHON }}`; `manifests`, `contracts`, `wiki` and `security` accept any CPython 3.12.x that satisfies `requires-python = ">=3.12,<3.13"` (explicit choice, cheapest: no extra step). `azure/setup-helm` keeps its default Helm version (`versions.yaml` has no Helm CLI key). The `required` job MUST keep `name: ci / required` (D3). Third-party action versions above are the major versions current on the planning date; on the pin date use the latest release of each and pin it by commit SHA (`uses: owner/action@<40-hex sha> # vX.Y.Z`). The SHA and tag are recorded only in that `uses:` line of `ci.yml`; W1-T14 does not edit `wiki/versions.md` (owned by W1-T02, PG-22). W1-T02 Step 8 (deferred to W1-S3) copies them into the `## GitHub Actions` table of `wiki/versions.md` (PG-26, ADR 0045 D6). `scripts/check_contracts.py` is created in W4-T06.
 
-- [ ] **Step 2: Push and verify** — open the PR; all jobs green or skipped; `required` green.
+- [ ] **Step 1b: Write `scripts/ci_changed_files.py` and its tests** (PG-26, ADR 0045 D1, D2) — write the eleven "Required tests" in `tests/repo/test_ci_changed_files.py` first and run `uv run pytest tests/repo/test_ci_changed_files.py -v` → FAIL; implement the script per "Interfaces" above; run the same command → 11 passed; then `uv run ruff format scripts/ci_changed_files.py tests/repo/test_ci_changed_files.py`, `uv run ruff check .` → `All checks passed!`, `uv run python scripts/check_ownership.py --task W1-T14 --base origin/develop --branch HEAD` → no output, exit 0.
 
-- [ ] **Step 3 [OWNER] (O-3): Create the rulesets on `rootline`** (GEN-020). Document the exact clicks in `wiki/runbooks/github-apps.md` § Rulesets, or run with confirmation:
+- [ ] **Step 2: Push and verify** (deferred to stage W1-S3, schedule YAML W1-T14 `deferred_steps: [2, 3]`) — after the W1-P3 integration PR has merged into `develop`, wait for the `push` run of `ci.yml` on that merge commit (`gh run watch "$(gh run list --branch develop --workflow ci.yml -L 1 --json databaseId --jq '.[0].databaseId')" --exit-status` → exit 0). Then run `gh api "repos/arkhash0309/rootline/commits/$(git rev-parse origin/develop)/check-runs" --jq '.check_runs[] | select(.name == "ci / required") | .conclusion'` → exactly one line `success` (PG-26, ADR 0045 D3). All other jobs are `success` or `skipped`. If the second command prints nothing, the job name does not match the ruleset context: the coordinator stops W1-S3 and sends W1-T14 back to its implementer on `feat/w1-ci-deferred`.
+
+- [ ] **Step 3 [OWNER] (O-3): Create the rulesets on `rootline`** (GEN-020, deferred to stage W1-S3). Document the exact clicks in `wiki/runbooks/github-apps.md` § Rulesets, or run with confirmation:
 
 ```bash
 gh api -X POST repos/arkhash0309/rootline/rulesets --input .github/rulesets/main.json
 gh api -X POST repos/arkhash0309/rootline/rulesets --input .github/rulesets/develop.json
 ```
 
-`.github/rulesets/main.json`: `{"name":"protect-main","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"required_linear_history"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}},{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"ci / required"}]}}],"bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]}` (actor 5 = repository admin role). `develop.json`: same without `required_linear_history` and without `bypass_actors`. Note: `required_linear_history` on `main` conflicts with the GEN-021 merge-commit release; resolve by **omitting** `required_linear_history` from `main.json` and recording the conflict in spec §26 and ADR 0025 (GEN-021 wins because it is the more specific rule).
+`.github/rulesets/main.json`: `{"name":"protect-main","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}},{"type":"required_status_checks","parameters":{"strict_required_status_checks_policy":false,"required_status_checks":[{"context":"ci / required"}]}}],"bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]}` (actor 5 = repository admin role). `.github/rulesets/develop.json`: the same JSON with `"name":"protect-develop"`, `"include":["refs/heads/develop"]`, the same four rules in the same order, and no `bypass_actors` key. Both files are committed pretty-printed with 2-space indentation and a final newline. Neither file has a `required_linear_history` rule: it would reject the GEN-021 merge-commit release PR `develop → main`; GEN-021 wins because it is the more specific rule. The conflict is recorded in spec GEN-020 (row `main`, column "Protection", and the note below the table), spec §26 PG-26, ADR 0025 "Amendment 2026-11-27" and ADR 0045 D4.
+
+Verification after the owner creates the rulesets (PG-26, ADR 0045 D3, D4):
+
+| Command | Expected |
+|---|---|
+| `gh api repos/arkhash0309/rootline/rules/branches/develop --jq '.[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[].context'` | exactly one line `ci / required` |
+| `gh api repos/arkhash0309/rootline/rules/branches/main --jq '.[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[].context'` | exactly one line `ci / required` |
+| `gh api repos/arkhash0309/rootline/rules/branches/main --jq '[.[].type] \| sort \| join(",")'` | `deletion,non_fast_forward,pull_request,required_status_checks` |
+
+If any command prints something else, the coordinator stops W1-S3 and asks the owner (O-3 is an **[OWNER]** step).
 
 - [ ] **Step 4: Commit** `ci: add ci.yml quality gate and branch rulesets`.
 
