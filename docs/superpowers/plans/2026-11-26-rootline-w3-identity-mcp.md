@@ -634,7 +634,7 @@ Every input model has `ConfigDict(extra="forbid")`; no field accepts a namespace
 **Files:** `services/mcp-gitops/rootline_mcp_gitops/{backend,live,replay,tools,models,app}.py`; tests.
 
 **Tool semantics:**
-- `get_recent_changes`: window `Nm|Nh` up to `24h` (`max_minutes=1440`), default `60m`; commits newest first, max 30; `short_sha` = first 7; `files[].workload` = `<component>` for paths `workload/<component>.yaml`, `null` otherwise; author = `author_name`; message ≤ 300 chars. Live via `EnvRepo.list_commits` using the `rootline-agent` App installation token (W3-T10) — until O-7 is done, live mode uses the `rootline-faultlab` App credentials read-only and logs a warning; this fallback is removed in W3-T10.
+- `get_recent_changes`: window `Nm|Nh` up to `24h` (`max_minutes=1440`), default `60m`; commits newest first, max 30; `short_sha` = first 7; `files[].workload` = `<component>` for paths `workload/<component>.yaml`, `null` otherwise (the shared files `workload/serviceaccount.yaml` and `workload/configmaps.yaml` give `null`, because their stems are not WKL-002 component names; PG-25, ADR 0044); author = `author_name`; message ≤ 300 chars. Live via `EnvRepo.list_commits` using the `rootline-agent` App installation token (W3-T10) — until O-7 is done, live mode uses the `rootline-faultlab` App credentials read-only and logs a warning; this fallback is removed in W3-T10.
 - `get_commit_diff`: `sha` 7–40 hex; prefix-resolved against known commits (ambiguous prefix → `invalid_argument "ambiguous sha"`); unknown → `not_found`; diff ≤ 300 lines with the truncation marker.
 - `get_proposal_status`: returns `not_found` until W5-T03 wires it to `api`.
 - Scopes: `gitops:read` for these three; `propose_fix` (scope `gitops:propose`) is added in W5-T03.

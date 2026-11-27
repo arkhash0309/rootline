@@ -2660,17 +2660,25 @@ git -C ../rootline-env push origin main
 
 ### Task W1-T09: Workload render script
 
-**Requirement IDs:** WKL-001, WKL-002, WKL-003, WKL-010, WKL-011, TST-WKL-001, GEN-011, PG-11, PG-12, LAB-011.
+**Requirement IDs:** WKL-001, WKL-002, WKL-003, WKL-010, WKL-011, TST-WKL-001, GEN-011, PG-11, PG-12, PG-25, LAB-011.
 **Depends on:** W1-T02, W1-T08, W1-T16 (`scripts.proc`). **Branch:** `feat/w1-workload-render`.
+
+> **Amended 2026-11-27 after the W1-T09 review, per PG-25 (overview §5; ADR 0044 `wiki/adr/0044-w1-t09-referenced-objects.md`).** The review of `feat/w1-workload-render` at `e5a43f1` ran the Step 3 transform on the real chart output (helm `v3.22.1`, `opentelemetry-demo` `0.42.8`, Step 1 `values.yaml`: 19 Deployments, 18 Services, 3 ConfigMaps, 1 ServiceAccount). The transform kept an object only when its component (label `app.kubernetes.io/component`, else `metadata.name`) is in `KEPT_COMPONENTS`. So it dropped `ServiceAccount/shop` (no component label; `serviceAccountName: shop` in all 19 Deployments, whose pods ServiceAccount admission then rejects) and `ConfigMap/postgresql-init` (no component label; mounted by `astronomy-db`, whose pod then stays `ContainerCreating`). The fixture hid both defects, because its ServiceAccount carried a component label. Changed: "Files" (fixture), "Output", "Interfaces", the Step 2 test block plus the new fixture YAML, the Step 3 and Step 4 blocks, and Step 6 (expected files). The W1-T09 implementer applies them on `feat/w1-workload-render` as a review fix and replaces the "Unverified (2026-11-27): the ServiceAccount name …" paragraph of `wiki/components/workload.md` with the D2 result below.
+> - **D1 (keep rule).** An object other than a `Secret` is kept by the first rule that applies. R1: ConfigMap `flagd-config` goes to `flagd-config` (WKL-010 step 6). R2: an object whose component is in `KEPT_COMPONENTS` goes to `<component>` (unchanged). R3: a `ServiceAccount` or `ConfigMap` that a kept workload references. A kept workload is a Deployment or StatefulSet that R2 keeps. Its references are read from `spec.template.spec` after WKL-010 steps 3 to 7 by `pod_references`: `serviceAccountName` (or the deprecated `serviceAccount`), `volumes[].configMap.name`, `volumes[].projected.sources[].configMap.name`, and in `containers[]` and `initContainers[]` `envFrom[].configMapRef.name` and `env[].valueFrom.configMapKeyRef.name`. `pod_references` also reads the Secret references `imagePullSecrets[].name`, `volumes[].secret.secretName`, `volumes[].projected.sources[].secret.name`, `envFrom[].secretRef.name` and `env[].valueFrom.secretKeyRef.name`. Fields that are absent or `null` count as empty. Every other object is dropped, including a `Namespace` (R3 never keeps one). Pseudocode: ADR 0044 D1.
+> - **D2 (file placement).** An R3 object referenced by the kept workloads of exactly one component `<c>` goes to `workload/<c>.yaml`. An R3 object referenced by two or more components goes to `workload/serviceaccount.yaml` (ServiceAccount) or `workload/configmaps.yaml` (ConfigMap). The reserved stems `flagd-config`, `serviceaccount`, `configmaps` and `networkpolicies` are not WKL-002 names, and a file is written only when it holds at least one object. Real chart `0.42.8`: exactly 22 files. `ServiceAccount/shop` goes to `workload/serviceaccount.yaml`, `ConfigMap/postgresql-init` to `workload/astronomy-db.yaml`, the labelled `ConfigMap/product-catalog-product-catalog-otel-config` stays in `workload/product-catalog.yaml`, and no `workload/configmaps.yaml` is written (Step 6 list).
+> - **D3 (Secrets, Namespace, errors).** Secrets are always removed (WKL-010 step 2), and Namespace handling is unchanged (step 1; kept only by R2). A required reference (no `optional: true`) is unresolved when its object is not in the output and is not ServiceAccount `default` or ConfigMap `kube-root-ca.crt` (`AUTO_CREATED`). Every required Secret reference is unresolved. `transform` then raises `UnresolvedReferenceError` (a `ValueError`; `errors` holds the sorted, de-duplicated messages `unresolved reference <WorkloadKind>/<workload> -> <Kind>/<name> (Secrets are removed by WKL-010 step 2)` for a Secret, or `(not in the helm template output)` for any other kind). `render_workload.py` prints each message as `render_workload: <message>` on stderr and exits `3` before it writes or deletes anything.
+> - **D4 (interfaces, fixture).** "Interfaces" and "Output" below list the new names. The fixture MUST contain the real-shape `ServiceAccount/shop` (no component label), referenced by `serviceAccountName: shop` in every fixture Deployment, and `ConfigMap/postgresql-init`, mounted by the kept Deployment `astronomy-db`. It also contains `ConfigMap/shop-shared-env` (shared by `payment` and `load-generator`), `ConfigMap/orphan-config` (unreferenced) and `ConfigMap/jaeger-sampling` (referenced only by the dropped `jaeger`). The exact YAML is in Step 2.
+> - **D5 (tests).** New tests `test_referenced_serviceaccount_kept`, `test_referenced_configmap_kept_in_workload_file`, `test_unreferenced_unlabelled_object_dropped` and `test_every_reference_of_kept_workload_resolves` (the output contains every `serviceAccountName` and ConfigMap reference of every kept workload), plus `test_missing_reference_rejected` and `test_secret_reference_rejected` (D3).
 
 **Files:**
 - Create: `deploy/upstream/otel-demo/values.yaml`, `scripts/render_workload.py`, `scripts/workload_transforms.py`
-- Create: `tests/repo/fixtures/otel-demo-mini.yaml` (hand-written excerpt of `helm template` output: Deployments `payment`, `flagd` (with `init-config` initContainer, `flagd-ui` sidecar, `config-rw` emptyDir, `config-ro` volume), `load-generator`; Services `payment`, `flagd`; ConfigMap `flagd-config` with key `demo.flagd.json` containing two flags, one with `defaultVariant: "on"`; one `Secret`; one ServiceAccount)
+- Create: `tests/repo/fixtures/otel-demo-mini.yaml` (hand-written excerpt of `helm template` output; PG-25): ServiceAccount `shop` (real shape, no component label); one `Secret` (`shop-registry-credentials`, label `app.kubernetes.io/component: payment`); ConfigMap `flagd-config` with key `demo.flagd.json` containing two flags, one with `defaultVariant: "on"`; Services `payment`, `flagd` and one Service of a disabled component; Deployments `payment`, `flagd` (with `init-config` initContainer, `flagd-ui` sidecar, `config-rw` emptyDir, `config-ro` volume on ConfigMap `flagd-config`), `load-generator`, `astronomy-db` and `jaeger` (disabled component); ConfigMaps `postgresql-init`, `shop-shared-env`, `orphan-config`, `jaeger-sampling`. Step 2 "Fixture additions" gives the exact YAML and edits (items 1 to 5). Every Deployment sets `serviceAccountName: shop`.
 - Test: `tests/repo/test_workload_render.py`
-- Output (in `rootline-env`): `workload/<component>.yaml`, `workload/flagd-config.yaml`, `workload/networkpolicies.yaml`, `.rootline/baseline.json`
+- Output (in `rootline-env`): `workload/<component>.yaml`, `workload/flagd-config.yaml`, `workload/networkpolicies.yaml`, `workload/serviceaccount.yaml` (ServiceAccounts referenced by two or more components; written only when non-empty), `workload/configmaps.yaml` (unlabelled ConfigMaps referenced by two or more components; written only when non-empty, so not for chart `0.42.8`), `.rootline/baseline.json`
 
 **Interfaces:**
-- Produces: `scripts.workload_transforms.transform(docs: list[dict]) -> dict[str, list[dict]]` (file stem → objects); `scripts.workload_transforms.dump(objs: list[dict]) -> str`; `uv run python scripts/render_workload.py --out <dir>`; constant `KEPT_COMPONENTS` (the 19 names of WKL-002); `COLLECTOR_FQDN = "otel-collector.observability.svc.cluster.local"`.
+- Produces: `scripts.workload_transforms.transform(docs: list[dict]) -> dict[str, list[dict]]` (file stem → objects; stems are the kept component names, `flagd-config`, `networkpolicies`, and `serviceaccount` / `configmaps` when non-empty; raises `UnresolvedReferenceError` per PG-25 D3); `scripts.workload_transforms.pod_references(spec: dict) -> set[tuple[str, str, bool]]` (`(kind, name, optional)` of every ServiceAccount, ConfigMap and Secret reference of one pod spec, PG-25 D1); `class UnresolvedReferenceError(ValueError)` with attribute `errors: list[str]` (sorted, de-duplicated messages; `str(exc)` joins them with `\n`); `scripts.workload_transforms.dump(objs: list[dict]) -> str`; constants `KEPT_COMPONENTS` (the 19 names of WKL-002), `COLLECTOR_FQDN = "otel-collector.observability.svc.cluster.local"`, `REFERENCED_KINDS = ("ServiceAccount", "ConfigMap")`, `SHARED_STEMS = {"ServiceAccount": "serviceaccount", "ConfigMap": "configmaps"}`, `AUTO_CREATED = frozenset({("ServiceAccount", "default"), ("ConfigMap", "kube-root-ca.crt")})`.
+- CLI: `uv run python scripts/render_workload.py --out <dir>`. Exit `0`: files and `.rootline/baseline.json` written. Exit `3`: one or more unresolved references, one stderr line `render_workload: <message>` each, nothing created, deleted or written. Exit `1` with a Python traceback: `helm` failed (`subprocess.CalledProcessError` from `scripts.proc.run`) or `versions.yaml` could not be loaded.
 
 - [ ] **Step 1: Write `deploy/upstream/otel-demo/values.yaml`**
 
@@ -2699,13 +2707,14 @@ Kept components (WKL-002) stay at chart defaults.
 - [ ] **Step 2: Write the failing tests**
 
 ```python
-"""Verifies WKL-010, WKL-011 (TST-WKL-001), PG-11, PG-12."""
+"""Verifies WKL-010, WKL-011 (TST-WKL-001), PG-11, PG-12, PG-25."""
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
-from scripts.workload_transforms import COLLECTOR_FQDN, dump, transform
+from scripts.workload_transforms import COLLECTOR_FQDN, UnresolvedReferenceError, dump, transform
 
 FIX = Path(__file__).parent / "fixtures/otel-demo-mini.yaml"
 
@@ -2774,14 +2783,224 @@ def test_load_generator_env() -> None:
 def test_networkpolicies_file() -> None:
     names = [o["metadata"]["name"] for o in transform(docs())["networkpolicies"]]
     assert names == ["allow-observability-scrape", "allow-same-namespace"]
+
+
+def where(out: dict[str, list[dict]]) -> dict[tuple[str, str], str]:
+    """(kind, name) -> file stem, for every object in the output."""
+    return {(o["kind"], o["metadata"]["name"]): stem for stem, objs in out.items() for o in objs}
+
+
+def test_referenced_serviceaccount_kept() -> None:
+    """PG-25 D1, D2: ServiceAccount shop has no component label and is shared -> serviceaccount."""
+    out = transform(docs())
+    assert where(out)[("ServiceAccount", "shop")] == "serviceaccount"
+    assert [(o["kind"], o["metadata"]["name"]) for o in out["serviceaccount"]] == [("ServiceAccount", "shop")]
+    assert out["serviceaccount"][0]["metadata"]["namespace"] == "shop"
+
+
+def test_referenced_configmap_kept_in_workload_file() -> None:
+    """PG-25 D1, D2: one referrer -> the workload's file; several -> configmaps."""
+    out = transform(docs())
+    assert where(out)[("ConfigMap", "postgresql-init")] == "astronomy-db"
+    assert [o["kind"] for o in out["astronomy-db"]] == ["ConfigMap", "Deployment"]
+    assert where(out)[("ConfigMap", "shop-shared-env")] == "configmaps"
+    assert where(out)[("ConfigMap", "flagd-config")] == "flagd-config"
+
+
+def test_unreferenced_unlabelled_object_dropped() -> None:
+    """PG-25 D1: no kept component and no reference from a kept workload -> dropped."""
+    found = where(transform(docs()))
+    assert ("ConfigMap", "orphan-config") not in found
+    assert ("ConfigMap", "jaeger-sampling") not in found  # referenced only by the dropped jaeger Deployment
+    assert ("Deployment", "jaeger") not in found
+
+
+def test_every_reference_of_kept_workload_resolves() -> None:
+    """PG-25 D4: every serviceAccountName and ConfigMap reference of every kept workload is in the output."""
+    out = transform(docs())
+    found = set(where(out))
+    wanted: set[tuple[str, str]] = set()
+    for o in (o for objs in out.values() for o in objs if o["kind"] in ("Deployment", "StatefulSet")):
+        spec = o["spec"]["template"]["spec"]
+        if spec.get("serviceAccountName"):
+            wanted.add(("ServiceAccount", spec["serviceAccountName"]))
+        for v in spec.get("volumes") or []:
+            if "configMap" in v:
+                wanted.add(("ConfigMap", v["configMap"]["name"]))
+        for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+            for src in c.get("envFrom") or []:
+                if "configMapRef" in src:
+                    wanted.add(("ConfigMap", src["configMapRef"]["name"]))
+            for e in c.get("env") or []:
+                if "configMapKeyRef" in (e.get("valueFrom") or {}):
+                    wanted.add(("ConfigMap", e["valueFrom"]["configMapKeyRef"]["name"]))
+    assert wanted == {("ServiceAccount", "shop"), ("ConfigMap", "flagd-config"),
+                      ("ConfigMap", "postgresql-init"), ("ConfigMap", "shop-shared-env")}
+    assert wanted <= found
+
+
+def test_missing_reference_rejected() -> None:
+    """PG-25 D3: a required reference that the chart output lacks raises, naming every referrer."""
+    ds = [d for d in docs() if (d["kind"], d["metadata"]["name"]) != ("ConfigMap", "postgresql-init")]
+    with pytest.raises(UnresolvedReferenceError) as err:
+        transform(ds)
+    assert err.value.errors == [
+        "unresolved reference Deployment/astronomy-db -> ConfigMap/postgresql-init "
+        "(not in the helm template output)"
+    ]
+
+
+def test_secret_reference_rejected() -> None:
+    """PG-25 D3: Secrets are never kept, so a required Secret reference of a kept workload is an error."""
+    ds = docs()
+    dep = next(d for d in ds if d["kind"] == "Deployment" and d["metadata"]["name"] == "payment")
+    dep["spec"]["template"]["spec"]["containers"][0]["envFrom"].append(
+        {"secretRef": {"name": "shop-registry-credentials"}})
+    with pytest.raises(UnresolvedReferenceError) as err:
+        transform(ds)
+    assert err.value.errors == [
+        "unresolved reference Deployment/payment -> Secret/shop-registry-credentials "
+        "(Secrets are removed by WKL-010 step 2)"
+    ]
 ```
 
-Run: `uv run pytest tests/repo/test_workload_render.py -v` → FAIL.
+**Fixture additions (PG-25 D4).** Apply these to `tests/repo/fixtures/otel-demo-mini.yaml`, in this order:
+
+1. Delete every `ServiceAccount` document and any existing Deployment `jaeger`. The fixture then holds no ServiceAccount with label `app.kubernetes.io/component`.
+2. Append the seven documents below, in the order shown (`---` between documents). They are: ServiceAccount `shop` with exactly the labels of the real render; ConfigMap `postgresql-init`; ConfigMap `shop-shared-env`; ConfigMap `orphan-config`; ConfigMap `jaeger-sampling`; Deployment `astronomy-db`; and Deployment `jaeger`, which replaces the one deleted in item 1.
+3. In every Deployment's `spec.template.spec`, set `serviceAccountName: shop` (`astronomy-db` and `jaeger` below already have it).
+4. In Deployment `payment`, container `payment` (index 0), set `envFrom: [{configMapRef: {name: shop-shared-env}}]`.
+5. In Deployment `load-generator`, container `load-generator` (index 0), append to `env` the entry `{name: SHOP_REGION, valueFrom: {configMapKeyRef: {name: shop-shared-env, key: SHOP_REGION}}}`.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: shop
+  labels:
+    helm.sh/chart: opentelemetry-demo-0.42.8
+    app.kubernetes.io/version: 3.1.0
+    app.kubernetes.io/part-of: opentelemetry-demo
+    app.kubernetes.io/managed-by: Helm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-init
+  namespace: shop
+  labels:
+    helm.sh/chart: opentelemetry-demo-0.42.8
+    app.kubernetes.io/version: 3.1.0
+    app.kubernetes.io/part-of: opentelemetry-demo
+    app.kubernetes.io/managed-by: Helm
+data:
+  init.sql: |
+    CREATE TABLE products (id TEXT PRIMARY KEY);
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-shared-env
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: opentelemetry-demo
+data:
+  SHOP_REGION: eu-west-1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orphan-config
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: opentelemetry-demo
+data:
+  unused: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-sampling
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: opentelemetry-demo
+data:
+  sampling.json: "{}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: astronomy-db
+  namespace: default
+  labels:
+    app.kubernetes.io/component: astronomy-db
+    app.kubernetes.io/name: astronomy-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: astronomy-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: astronomy-db
+        app.kubernetes.io/name: astronomy-db
+    spec:
+      serviceAccountName: shop
+      containers:
+        - name: astronomy-db
+          image: ghcr.io/open-telemetry/demo:3.1.0-astronomy-db
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            - name: postgresql-init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: postgresql-init
+          configMap:
+            name: postgresql-init
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: default
+  labels:
+    app.kubernetes.io/component: jaeger
+    app.kubernetes.io/name: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: jaeger
+        app.kubernetes.io/name: jaeger
+    spec:
+      serviceAccountName: shop
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.0
+          ports:
+            - containerPort: 16686
+          volumeMounts:
+            - name: sampling
+              mountPath: /etc/jaeger
+      volumes:
+        - name: sampling
+          configMap:
+            name: jaeger-sampling
+```
+
+Run: `uv run pytest tests/repo/test_workload_render.py -v` → FAIL. On `e5a43f1`, collection fails with `ImportError` (no `UnresolvedReferenceError`). Five tests need the Step 3 keep rule and fail even when the import is satisfied: `test_referenced_serviceaccount_kept`, `test_referenced_configmap_kept_in_workload_file`, `test_every_reference_of_kept_workload_resolves`, `test_missing_reference_rejected` and `test_secret_reference_rejected` (planner check, 2026-11-27). `test_unreferenced_unlabelled_object_dropped` already passes on the old rule and guards against regressions.
 
 - [ ] **Step 3: Implement `scripts/workload_transforms.py`**
 
 ```python
-"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12)."""
+"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12, PG-25)."""
 from __future__ import annotations
 
 import copy
@@ -2798,11 +3017,59 @@ KEPT_COMPONENTS = [
 ]
 WORKLOAD_KINDS = ("Deployment", "StatefulSet")
 KIND_ORDER = ["ServiceAccount", "ConfigMap", "Service", "Deployment", "StatefulSet"]
+# Kinds that the reference rule can keep, and the shared file of each (PG-25 D1, D2).
+REFERENCED_KINDS = ("ServiceAccount", "ConfigMap")
+SHARED_STEMS = {"ServiceAccount": "serviceaccount", "ConfigMap": "configmaps"}
+# Objects Kubernetes creates in every namespace; a reference to one is never an error (PG-25 D3).
+AUTO_CREATED = frozenset({("ServiceAccount", "default"), ("ConfigMap", "kube-root-ca.crt")})
+
+
+class UnresolvedReferenceError(ValueError):
+    """A kept workload references an object that is not in the output (PG-25 D3)."""
+
+    def __init__(self, errors: list[str]) -> None:
+        super().__init__("\n".join(errors))
+        self.errors = errors
 
 
 def component_of(obj: dict[str, Any]) -> str:
     labels = obj.get("metadata", {}).get("labels", {}) or {}
     return labels.get("app.kubernetes.io/component") or obj["metadata"]["name"]
+
+
+def pod_references(spec: dict[str, Any]) -> set[tuple[str, str, bool]]:
+    """(kind, name, optional) of every object a pod spec references by name (PG-25 D1)."""
+    refs: set[tuple[str, str, bool]] = set()
+    account = spec.get("serviceAccountName") or spec.get("serviceAccount")
+    if account:
+        refs.add(("ServiceAccount", account, False))
+    for pull in spec.get("imagePullSecrets") or []:
+        refs.add(("Secret", pull["name"], False))
+    for vol in spec.get("volumes") or []:
+        if "configMap" in vol:
+            refs.add(("ConfigMap", vol["configMap"]["name"], bool(vol["configMap"].get("optional"))))
+        if "secret" in vol:
+            refs.add(("Secret", vol["secret"]["secretName"], bool(vol["secret"].get("optional"))))
+        for src in (vol.get("projected") or {}).get("sources") or []:
+            if "configMap" in src:
+                refs.add(("ConfigMap", src["configMap"]["name"], bool(src["configMap"].get("optional"))))
+            if "secret" in src:
+                refs.add(("Secret", src["secret"]["name"], bool(src["secret"].get("optional"))))
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        for src in c.get("envFrom") or []:
+            if "configMapRef" in src:
+                refs.add(("ConfigMap", src["configMapRef"]["name"], bool(src["configMapRef"].get("optional"))))
+            if "secretRef" in src:
+                refs.add(("Secret", src["secretRef"]["name"], bool(src["secretRef"].get("optional"))))
+        for e in c.get("env") or []:
+            value_from = e.get("valueFrom") or {}
+            if "configMapKeyRef" in value_from:
+                ref = value_from["configMapKeyRef"]
+                refs.add(("ConfigMap", ref["name"], bool(ref.get("optional"))))
+            if "secretKeyRef" in value_from:
+                ref = value_from["secretKeyRef"]
+                refs.add(("Secret", ref["name"], bool(ref.get("optional"))))
+    return refs
 
 
 def _set_env(container: dict[str, Any], name: str, value: str) -> None:
@@ -2863,18 +3130,27 @@ def network_policies() -> list[dict[str, Any]]:
 
 def transform(docs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     out: dict[str, list[dict[str, Any]]] = {}
+    placed: set[tuple[str, str]] = set()  # (kind, name) of every object already in `out`
+    candidates: dict[tuple[str, str], dict[str, Any]] = {}  # unplaced ServiceAccounts and ConfigMaps
+    # (kind, name) -> {(component, workload kind, workload name)} of the kept workloads referencing it
+    referrers: dict[tuple[str, str], set[tuple[str, str, str]]] = {}
+    required: set[tuple[str, str]] = set()  # referenced at least once without optional: true
     for original in docs:
         obj = copy.deepcopy(original)
         if obj["kind"] == "Secret":
             continue
         obj["metadata"]["namespace"] = "shop"
         obj["metadata"].pop("managedFields", None)
+        key = (obj["kind"], obj["metadata"]["name"])
         if obj["kind"] == "ConfigMap" and obj["metadata"]["name"] == "flagd-config":
             _flags_off(obj)
             out.setdefault("flagd-config", []).append(obj)
+            placed.add(key)
             continue
         comp = component_of(obj)
         if comp not in KEPT_COMPONENTS:
+            if obj["kind"] in REFERENCED_KINDS:
+                candidates[key] = obj
             continue
         if obj["kind"] in WORKLOAD_KINDS:
             obj["metadata"].setdefault("labels", {})["app.kubernetes.io/part-of"] = "rootline-workload"
@@ -2891,8 +3167,31 @@ def transform(docs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 for name, value in (("LOCUST_USERS", "10"), ("LOCUST_SPAWN_RATE", "2"),
                                     ("LOCUST_AUTOSTART", "true")):
                     _set_env(spec["containers"][0], name, value)
+            for kind, name, optional in pod_references(spec):
+                referrers.setdefault((kind, name), set()).add((comp, obj["kind"], obj["metadata"]["name"]))
+                if not optional:
+                    required.add((kind, name))
         out.setdefault(comp, []).append(obj)
-    for comp, objs in out.items():
+        placed.add(key)
+    errors: set[str] = set()
+    for key in sorted(referrers):
+        kind, name = key
+        if key in placed or key in AUTO_CREATED:
+            continue
+        if kind in REFERENCED_KINDS and key in candidates:
+            comps = sorted({comp for comp, _, _ in referrers[key]})
+            stem = comps[0] if len(comps) == 1 else SHARED_STEMS[kind]
+            out.setdefault(stem, []).append(candidates[key])
+            placed.add(key)
+            continue
+        if key not in required:
+            continue
+        reason = "Secrets are removed by WKL-010 step 2" if kind == "Secret" else "not in the helm template output"
+        for _, wkind, wname in referrers[key]:
+            errors.add(f"unresolved reference {wkind}/{wname} -> {kind}/{name} ({reason})")
+    if errors:
+        raise UnresolvedReferenceError(sorted(errors))
+    for objs in out.values():
         objs.sort(key=lambda o: (KIND_ORDER.index(o["kind"]) if o["kind"] in KIND_ORDER else 99,
                                  o["metadata"]["name"]))
     out["networkpolicies"] = sorted(network_policies(), key=lambda o: o["metadata"]["name"])
@@ -2908,6 +3207,8 @@ def dump(objs: list[dict[str, Any]]) -> str:
 ```python
 """Render the workload into rootline-env (WKL-001). Usage:
   uv run python scripts/render_workload.py --out <rootline-env>/workload
+Exit codes: 0 written; 3 a kept workload references an object missing from the output (PG-25 D3),
+nothing written. A failing helm command raises subprocess.CalledProcessError (exit 1).
 """
 from __future__ import annotations
 
@@ -2922,7 +3223,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.proc import run
 from scripts.versions_lib import REPO, load_versions
-from scripts.workload_transforms import dump, transform
+from scripts.workload_transforms import UnresolvedReferenceError, dump, transform
 
 
 def main() -> int:
@@ -2934,7 +3235,12 @@ def main() -> int:
     rendered = run(["helm", "template", "shop", "open-telemetry/opentelemetry-demo", "--version",
                     demo["chart"], "--namespace", "shop", "-f",
                     str(REPO / "deploy/upstream/otel-demo/values.yaml")]).stdout
-    files = transform([d for d in yaml.safe_load_all(rendered) if d])
+    try:
+        files = transform([d for d in yaml.safe_load_all(rendered) if d])
+    except UnresolvedReferenceError as exc:  # PG-25 D3: report every error, write nothing
+        for line in exc.errors:
+            print(f"render_workload: {line}", file=sys.stderr)
+        return 3
     args.out.mkdir(parents=True, exist_ok=True)
     for stale in args.out.glob("*.yaml"):
         stale.unlink()
@@ -2960,7 +3266,12 @@ uv run python scripts/render_workload.py --out "$ROOTLINE_ENV_DIR/workload"
 git -C "$ROOTLINE_ENV_DIR" status --porcelain
 uv run python scripts/render_workload.py --out "$ROOTLINE_ENV_DIR/workload"
 git -C "$ROOTLINE_ENV_DIR" diff --stat   # expected: no changes between the two renders after staging the first
+ls "$ROOTLINE_ENV_DIR/workload"
+grep -c '^kind: ServiceAccount$' "$ROOTLINE_ENV_DIR/workload/serviceaccount.yaml"
+grep '^kind:' "$ROOTLINE_ENV_DIR/workload/astronomy-db.yaml"
 ```
+
+Expected (PG-25 D2; planner run on 2026-11-27 with chart `0.42.8`). Both renders exit `0`. `ls` prints exactly these 22 names: `ad.yaml`, `astronomy-db.yaml`, `cart.yaml`, `checkout.yaml`, `currency.yaml`, `email.yaml`, `flagd-config.yaml`, `flagd.yaml`, `fraud-detection.yaml`, `frontend-proxy.yaml`, `frontend.yaml`, `image-provider.yaml`, `kafka.yaml`, `load-generator.yaml`, `networkpolicies.yaml`, `payment.yaml`, `product-catalog.yaml`, `quote.yaml`, `recommendation.yaml`, `serviceaccount.yaml`, `shipping.yaml`, `valkey-cart.yaml`; there is no `configmaps.yaml`. The `grep -c` prints `1`. The last `grep` prints `kind: ConfigMap`, `kind: Service`, `kind: Deployment`, in that order. If the render exits `3`, or any of these differs, stop and report `STATUS: BLOCKED` with the stderr lines and the `ls` output. Do not change the transform to match the output.
 
 Inspect the output and record in `wiki/components/workload.md`: (a) the kind of `astronomy-db` (LAB-011), (b) the kind of `valkey-cart` and `kafka`, (c) the container index of `LOCUST_USERS` in `load-generator` (WKL-041), (d) the env var names in `checkout` and `frontend` used by G02 (LAB-012), (e) every container port per component.
 
