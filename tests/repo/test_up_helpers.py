@@ -396,3 +396,14 @@ def test_fix_node_dns_write_not_applied(monkeypatch: pytest.MonkeyPatch) -> None
         str(error.value)
         == "node DNS: search or domain line still present in k3d-rootline-server-0:/etc/resolv.conf"
     )
+
+
+def test_stream_timeout_is_a_step_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GEN-060: a command that exceeds its timeout fails the step with a message, not a traceback."""
+
+    def fake(cmd: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd, 5)
+
+    monkeypatch.setattr(up, "run", fake)
+    with pytest.raises(up.StepError, match="helm repo add timed out after 5 s"):
+        up.stream(["helm", "repo", "add"], timeout=5)

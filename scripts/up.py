@@ -166,7 +166,11 @@ def sh(cmd: list[str], *, input_text: str | None = None, timeout: int = 900) -> 
 
 
 def stream(cmd: list[str], timeout: int) -> None:
-    if run(cmd, check=False, capture=False, timeout=timeout).returncode != 0:
+    try:
+        failed = run(cmd, check=False, capture=False, timeout=timeout).returncode != 0
+    except subprocess.TimeoutExpired as error:
+        raise StepError(f"{' '.join(cmd)} timed out after {timeout} s") from error
+    if failed:
         raise StepError(f"{' '.join(cmd)} failed")
 
 
@@ -197,7 +201,7 @@ def step_images() -> None:
 def step_argocd(versions: dict[str, Any]) -> None:
     print("==> install ArgoCD", flush=True)
     row = versions["argo-cd"]
-    stream(["helm", "repo", "add", "argo", row["repo"], "--force-update"], timeout=120)
+    stream(["helm", "repo", "add", "argo", row["repo"], "--force-update"], timeout=600)
     stream(
         [
             "helm", "--kube-context", CONTEXT, "upgrade", "--install", "argocd", "argo/argo-cd",
