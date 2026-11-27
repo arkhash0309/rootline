@@ -1,0 +1,90 @@
+# Rootline wiki
+
+WIK-001: `wiki/` is the persistent working memory for the AI coding agents that implement Rootline, and the decision trail for human readers. It complements the spec: the spec states what must be true; the wiki states what is true now and why. New top-level wiki files require an update of this index (WIK-002).
+
+- [adr/0000-template.md](adr/0000-template.md) — Template for new ADRs (WIK-011).
+- [adr/0001-target-role.md](adr/0001-target-role.md) — ADR 0001 — Target role: AI / LLM Engineer
+- [adr/0002-product-concept.md](adr/0002-product-concept.md) — ADR 0002 — Product concept: self-diagnosing cluster (AI SRE)
+- [adr/0003-workload.md](adr/0003-workload.md) — ADR 0003 — Workload: trimmed OpenTelemetry Demo
+- [adr/0004-models.md](adr/0004-models.md) — ADR 0004 — Models: Haiku 5.5 small, Sonnet 5.5 large, Ollama local baseline
+- [adr/0005-llm-access-layer.md](adr/0005-llm-access-layer.md) — ADR 0005 — LLM access layer: in-house `rootline-llm`
+- [adr/0006-cloud.md](adr/0006-cloud.md) — ADR 0006 — Cloud: GCP, zonal GKE Standard, spot nodes, us-central1-a
+- [adr/0007-hosting-model.md](adr/0007-hosting-model.md) — ADR 0007 — Hosting model: no persistent hosting
+- [adr/0008-autonomy.md](adr/0008-autonomy.md) — ADR 0008 — Autonomy: risk-tiered OPA policy, default-deny
+- [adr/0009-user-idp.md](adr/0009-user-idp.md) — ADR 0009 — User identity provider: Keycloak with passkeys
+- [adr/0010-agent-delegation.md](adr/0010-agent-delegation.md) — ADR 0010 — Agent delegation: RFC 8693 token exchange with `azp` fallback
+- [adr/0011-agent-workload-identity.md](adr/0011-agent-workload-identity.md) — ADR 0011 — Agent workload identity: Keycloak federated client authentication
+- [adr/0012-mcp-revision.md](adr/0012-mcp-revision.md) — ADR 0012 — MCP revision 2026-07-28 with streamable HTTP
+- [adr/0013-agent-tracing.md](adr/0013-agent-tracing.md) — ADR 0013 — Agent tracing: Langfuse Cloud Hobby with unit budgeting
+- [adr/0014-job-queue.md](adr/0014-job-queue.md) — ADR 0014 — Job queue: Postgres with FOR UPDATE SKIP LOCKED
+- [adr/0015-database.md](adr/0015-database.md) — ADR 0015 — Database: Postgres 16 with pgvector via CloudNativePG, in cluster
+- [adr/0016-gitops-repositories.md](adr/0016-gitops-repositories.md) — ADR 0016 — GitOps repositories: `rootline` and `rootline-env`
+- [adr/0017-manifest-tooling.md](adr/0017-manifest-tooling.md) — ADR 0017 — Manifest tooling: Helm everywhere, workload rendered once
+- [adr/0018-image-registry.md](adr/0018-image-registry.md) — ADR 0018 — Image registry: Google Artifact Registry
+- [adr/0019-task-runner.md](adr/0019-task-runner.md) — ADR 0019 — Task runner: go-task with Python helper scripts
+- [adr/0020-embeddings.md](adr/0020-embeddings.md) — ADR 0020 — Embeddings: fastembed with BAAI/bge-small-en-v1.5
+- [adr/0021-ingress.md](adr/0021-ingress.md) — ADR 0021 — Ingress: Traefik with Gateway API
+- [adr/0022-wiki.md](adr/0022-wiki.md) — ADR 0022 — Wiki: in-repo `wiki/` plus the `rootline-wiki` skill
+- [adr/0023-fix-catalogue.md](adr/0023-fix-catalogue.md) — ADR 0023 — Fix catalogue: six typed actions
+- [adr/0024-evaluation-execution.md](adr/0024-evaluation-execution.md) — ADR 0024 — Evaluation execution: host-side runner with Message Batches
+- [adr/0025-branching.md](adr/0025-branching.md) — ADR 0025 — Branching: Git flow light
+- [adr/0026-structured-outputs-raw-schema.md](adr/0026-structured-outputs-raw-schema.md) — ADR 0026 — Structured outputs: raw JSON schema through messages.create
+- [adr/0027-no-fallbacks-in-batch.md](adr/0027-no-fallbacks-in-batch.md) — ADR 0027 — No server-side fallbacks in batch requests
+- [adr/0028-planning-schedule-adjustments.md](adr/0028-planning-schedule-adjustments.md) — ADR 0028 — Planning schedule adjustments for weeks 2 to 4
+- [adr/0029-snapshot-parity-flag.md](adr/0029-snapshot-parity-flag.md) — ADR 0029 — Snapshot manifest field `parity`
+- [adr/0030-acceptable-action-constraints.md](adr/0030-acceptable-action-constraints.md) — ADR 0030 — Acceptable-action constraints as a typed model
+- [adr/0031-root-tests-directory.md](adr/0031-root-tests-directory.md) — ADR 0031 — Root `tests/` directory for cross-cutting tests
+- [adr/0032-secret-bootstrap.md](adr/0032-secret-bootstrap.md) — ADR 0032 — Secret bootstrap for repository credentials, database passwords and Anthropic keys
+- [adr/0033-workload-render-refinements.md](adr/0033-workload-render-refinements.md) — ADR 0033 — Workload render refinements for flagd and OTLP endpoints
+- [adr/0034-batch-ids-and-caching.md](adr/0034-batch-ids-and-caching.md) — ADR 0034 — Hashed batch custom_id and automatic cache breakpoint
+- [adr/0035-swarm-execution.md](adr/0035-swarm-execution.md) — ADR 0035 — Swarm execution: parallel stages, integration branches and fixed role models
+- [adr/0036-wsl-development.md](adr/0036-wsl-development.md) — ADR 0036 — Development in WSL 2 Ubuntu 26.04
+- [adr/0037-swarm-state-dir.md](adr/0037-swarm-state-dir.md) — ADR 0037 — Swarm state directory `.swarm/` and tool outputs at the repository root (spec-gap)
+- [adr/0038-ruff-scope-and-formatting.md](adr/0038-ruff-scope-and-formatting.md) — ADR 0038 — Ruff excludes Markdown; plan code blocks fix content, not formatting (spec-gap)
+- [adr/0039-commit-trailers.md](adr/0039-commit-trailers.md) — ADR 0039 — Commit attribution trailer per agent role (spec-gap)
+- [adr/0040-swarm-plan-amendments-w1-t16.md](adr/0040-swarm-plan-amendments-w1-t16.md) — ADR 0040 — Swarm tooling plan amendments from the W1-T16 review (spec-gap)
+- [architecture.md](architecture.md) — Living architecture: context diagram and component table with links to the spec.
+- [components/agent.md](components/agent.md) — Component page for `agent` (WIK-010).
+- [components/api.md](components/api.md) — Component page for `api` (WIK-010).
+- [components/argocd.md](components/argocd.md) — Component page for `argocd` (WIK-010).
+- [components/capacity.md](components/capacity.md) — Component page for `capacity` (WIK-010).
+- [components/cert-manager.md](components/cert-manager.md) — Component page for `cert-manager` (WIK-010).
+- [components/chaos-mesh.md](components/chaos-mesh.md) — Component page for `chaos-mesh` (WIK-010).
+- [components/console.md](components/console.md) — Component page for `console` (WIK-010).
+- [components/demo-seed.md](components/demo-seed.md) — Component page for `demo-seed` (WIK-010).
+- [components/external-secrets.md](components/external-secrets.md) — Component page for `external-secrets` (WIK-010).
+- [components/faultlab.md](components/faultlab.md) — Component page for `faultlab` (WIK-010).
+- [components/gate.md](components/gate.md) — Component page for `gate` (WIK-010).
+- [components/keycloak-config.md](components/keycloak-config.md) — Component page for `keycloak-config` (WIK-010).
+- [components/keycloak.md](components/keycloak.md) — Component page for `keycloak` (WIK-010).
+- [components/kube-prometheus-stack.md](components/kube-prometheus-stack.md) — Component page for `kube-prometheus-stack` (WIK-010).
+- [components/kyverno.md](components/kyverno.md) — Component page for `kyverno` (WIK-010).
+- [components/loki.md](components/loki.md) — Component page for `loki` (WIK-010).
+- [components/mcp-gitops.md](components/mcp-gitops.md) — Component page for `mcp-gitops` (WIK-010).
+- [components/mcp-k8s.md](components/mcp-k8s.md) — Component page for `mcp-k8s` (WIK-010).
+- [components/mcp-telemetry.md](components/mcp-telemetry.md) — Component page for `mcp-telemetry` (WIK-010).
+- [components/migrate.md](components/migrate.md) — Component page for `migrate` (WIK-010).
+- [components/otel-collector.md](components/otel-collector.md) — Component page for `otel-collector` (WIK-010).
+- [components/postgres.md](components/postgres.md) — Component page for `postgres` (WIK-010).
+- [components/telemetry.md](components/telemetry.md) — Component page for `telemetry` (WIK-010).
+- [components/tempo.md](components/tempo.md) — Component page for `tempo` (WIK-010).
+- [components/traefik.md](components/traefik.md) — Component page for `traefik` (WIK-010).
+- [components/workload.md](components/workload.md) — Component page for `workload` (WIK-010).
+- [cost-ledger.md](cost-ledger.md) — Budget caps (CST-001) and the weekly spend ledger (CST-012).
+- [eval/dataset.md](eval/dataset.md) — Evaluation dataset statistics (planned in W2-T13).
+- [eval/local-pilot.md](eval/local-pilot.md) — Local model pilot result (planned in W4-T14).
+- [eval/results.md](eval/results.md) — Evaluation results and report links (planned in W4-T15).
+- [glossary.md](glossary.md) — Mirror of spec §2 plus additions.
+- [index.md](index.md) — Map of every wiki page with a one-line description.
+- [log.md](log.md) — Dated append-only activity log (WIK-013).
+- [runbooks/capture-batch.md](runbooks/capture-batch.md) — Overnight Fault Lab capture batch (planned in W2-T12).
+- [runbooks/gcp-bootstrap.md](runbooks/gcp-bootstrap.md) — GCP project bootstrap (planned in W7-T01).
+- [runbooks/github-apps.md](runbooks/github-apps.md) — GitHub Apps creation and installation (planned in W2-T07 and W3-T10).
+- [runbooks/gke-spin-up.md](runbooks/gke-spin-up.md) — GKE spin-up and S1 timing (planned in W7-T06).
+- [runbooks/gke-teardown.md](runbooks/gke-teardown.md) — GKE teardown (planned in W7-T06).
+- [runbooks/interview-demo.md](runbooks/interview-demo.md) — Interview demo procedure (planned in W8-T06).
+- [runbooks/local-up.md](runbooks/local-up.md) — Local cluster bring-up and the GitOps repositories section.
+- [runbooks/recovery.md](runbooks/recovery.md) — Recovery from restore_failed, stuck ArgoCD and Keycloak lockout (planned in W2-T12).
+- [runbooks/workstation-setup.md](runbooks/workstation-setup.md) — Install and verify the WSL 2 workstation (GEN-040).
+- [security/threat-model.md](security/threat-model.md) — Threat model: SEC-140 summary table.
+- [status.md](status.md) — Current milestone, done, in progress, next and blockers (WIK-012).
