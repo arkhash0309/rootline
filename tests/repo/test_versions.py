@@ -1,6 +1,7 @@
 """Verifies GEN-050."""
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +38,24 @@ def test_version_of_mapping() -> None:
 def test_check_versions_script_passes() -> None:
     r = subprocess.run([sys.executable, "scripts/check_versions.py"], cwd=REPO)
     assert r.returncode == 0
+
+
+def test_check_versions_invalid_yaml_exits_2(tmp_path: Path) -> None:
+    """Verifies GEN-050: invalid YAML gives exit 2 and one stderr line `versions.yaml: ...`."""
+    (tmp_path / "scripts").mkdir()
+    for name in ("__init__.py", "check_versions.py", "versions_lib.py"):
+        shutil.copy(REPO / "scripts" / name, tmp_path / "scripts" / name)
+    (tmp_path / "versions.yaml").write_text("a: [1, 2\nb: :\n", encoding="utf-8")
+    r = subprocess.run(
+        [sys.executable, "scripts/check_versions.py"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    lines = r.stderr.splitlines()
+    assert r.returncode == 2
+    assert len(lines) == 1
+    assert lines[0].startswith("versions.yaml:")
 
 
 def test_generated_files_up_to_date() -> None:
