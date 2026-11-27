@@ -1317,6 +1317,8 @@ Fill the PR body sections before creating (Requirement IDs: WIK-001–021, §3; 
 
 - [ ] **Step 1 (pre-dispatch, coordinator — overview §7.3): Load the superpowers `writing-skills` skill** and follow its process; the coordinator dispatches a fresh `rootline-implementer` (Sonnet 5.5, high) as the test subject and passes the recorded baseline to the W1-T05 implementer (it requires a baseline test of agent behaviour without the skill; use the scenario "implement a one-line change in `libs/py-common` and finish the task" and record whether the agent updated `wiki/log.md` and ran `task wiki:lint`).
 
+  > **Amended 2026-11-27, per PG-23 (overview §5; ADR 0042).** The `writing-skills` skill is not available to the coordinator, so it is not loaded in Step 1 or Step 4. Step 1 is the baseline scenario run of ADR 0042 D2 to D5: one fresh `rootline-implementer` (`model: "sonnet"`, `effort: "high"`, `isolation: "worktree"`) with the fixed prompt of ADR 0042 D2 step 3, the record `.swarm/gates/W1-T05-baseline.json` (fields in ADR 0042 D3), one retry for an invalid attempt, and `BLOCKED` (stage W1-P2 stops for the owner) after a second invalid attempt. Step 1 writes nothing to `wiki/log.md`. The coordinator passes the record JSON to the W1-T05 implementer in `details`; a `baseline-passes` result changes nothing in Steps 2, 3 and 5. Step 4 is the verification scenario run of ADR 0042 D6, recorded in `.swarm/gates/W1-T05-verify.json`, with the `wiki/log.md` line of ADR 0042 D6 step 3 on `feat/w1-wiki-skill-deferred`. The red-green test of Steps 2 and 5 is unchanged.
+
 - [ ] **Step 2: Write the failing test**
 
 ```python
