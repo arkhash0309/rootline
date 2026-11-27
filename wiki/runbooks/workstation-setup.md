@@ -57,7 +57,7 @@ Windows runs nothing else for the project. From WSL, a URL is opened in the Wind
 
 ## Tools
 
-Versions marked "from `versions.yaml`" are the values of the keys of the same name in `versions.yaml` (GEN-050, resolved by W1-T02); the keys `k3d`, `opa` and `terraform` exist in GEN-050. Set the shell variable named in the command to that value before running it. Tools that GEN-050 has no key for (`kubectl`, `helm`, `go-task`, `gh`) carry a literal version in their command block, marked "pinned here, not yet in versions.yaml (W1-T02 may add the key)". The literal versions are the versions reported on 2026-11-27 by the binaries already installed in `~/.local/bin` on the workstation (`kubectl version --client`, `helm version --short`, `task --version`, `gh --version`), and `https://dl.k8s.io/release/stable.txt` returned `v1.37.3` on the same day. All user-level binaries go to `~/.local/bin`.
+Versions marked "from `versions.yaml`" are the values of the keys of the same name in `versions.yaml` (GEN-050); the keys `k3d`, `opa` and `terraform` exist in GEN-050. Set the shell variable named in the command to that value before running it. Tools that GEN-050 has no key for (`kubectl`, `helm`, `go-task`, `gh`) carry a literal version in their command block, marked "pinned here, not in versions.yaml". The literal versions are the versions reported on 2026-11-27 by the binaries already installed in `~/.local/bin` on the workstation (`kubectl version --client`, `helm version --short`, `task --version`, `gh --version`), and `https://dl.k8s.io/release/stable.txt` returned `v1.37.3` on the same day. All user-level binaries go to `~/.local/bin`.
 
 ### Root part: script `~/rootline-root-setup.sh`
 
@@ -100,18 +100,18 @@ chmod +x ~/.local/bin/k3d
 ### kubectl
 
 ```bash
-# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires the cluster minor plus or minus 1
+# pinned here, not in versions.yaml (this runbook is the only place these four tools are pinned); GEN-040 requires the cluster minor plus or minus 1
 KUBECTL_VERSION=v1.37.3
 curl -fsSL -o ~/.local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
 chmod +x ~/.local/bin/kubectl
 ```
 
-The kubectl minor version must match the cluster minor version plus or minus 1. W1-T02 re-pins it once the `k3s` minor is resolved.
+The kubectl minor version must match the cluster minor version plus or minus 1 (GEN-040). `versions.yaml` pins `k3s` at `v1.36.6+k3s1`, so the cluster minor is 1.36; kubectl `v1.37.3` has minor 1.37, which is within plus or minus 1, so the pin stays `v1.37.3`.
 
 ### Helm
 
 ```bash
-# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires a 3.x release
+# pinned here, not in versions.yaml (this runbook is the only place these four tools are pinned); GEN-040 requires a 3.x release
 HELM_VERSION=v3.22.1
 curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp linux-amd64/helm
 install -m 0755 /tmp/linux-amd64/helm ~/.local/bin/helm
@@ -120,7 +120,7 @@ install -m 0755 /tmp/linux-amd64/helm ~/.local/bin/helm
 ### go-task
 
 ```bash
-# pinned here, not yet in versions.yaml (W1-T02 may add the key); GEN-040 requires a 3.x release
+# pinned here, not in versions.yaml (this runbook is the only place these four tools are pinned); GEN-040 requires a 3.x release
 TASK_VERSION=3.54.0
 curl -fsSL "https://github.com/go-task/task/releases/download/v${TASK_VERSION}/task_linux_amd64.tar.gz" | tar -xz -C ~/.local/bin task
 ```
@@ -172,7 +172,7 @@ ln -sf ~/.local/opt/google-cloud-sdk/bin/gke-gcloud-auth-plugin ~/.local/bin/gke
 ### GitHub CLI
 
 ```bash
-# pinned here, not yet in versions.yaml (W1-T02 may add the key); release 2.106.0 dated 2026-11-25, the version reported by `gh --version` on the workstation on 2026-11-27
+# pinned here, not in versions.yaml (this runbook is the only place these four tools are pinned); release 2.106.0 dated 2026-11-25, the version reported by `gh --version` on the workstation on 2026-11-27
 GH_VERSION=2.106.0
 curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp
 install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" ~/.local/bin/gh

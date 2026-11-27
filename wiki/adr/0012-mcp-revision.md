@@ -17,8 +17,7 @@ Spec §3 row 0012 is the source of this wording. It is implemented by requiremen
 
 ## Consequences
 
-- If the pinned `mcp` SDK does not implement the revision, W1-T02 records the fallback in this ADR.
-- SEC-052 records the deviation between the spec text and the SDK, if any.
+- The pinned `mcp` SDK `2.3.0` (`versions.yaml`) implements revision `2026-07-28`, and `versions.yaml` sets no `mcp_protocol_revision` fallback key, so no fallback is used and no deviation between the spec text and the SDK is recorded (MCP-001, SEC-052).
 
 ## Alternatives considered
 
