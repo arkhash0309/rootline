@@ -25,5 +25,6 @@ spec:
   length: 43
   digits: 8
   symbols: 0
+  noUpper: false
   allowRepeat: true
 {{- end }}

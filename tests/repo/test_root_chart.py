@@ -3,7 +3,7 @@
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
@@ -341,7 +341,9 @@ def test_copy_ca_job(env: str) -> None:
     assert container["name"] == "copy-ca"
     assert container["image"] == image
     assert container["command"] == ["/bin/kubectl", "apply", "-k", "/work"]
-    assert container["env"] == [{"name": "HOME", "value": "/tmp"}]  # noqa: S108 - literal container path
+    tmp_mount_path = {m["name"]: m for m in container["volumeMounts"]}["tmp"]["mountPath"]
+    assert PurePosixPath(tmp_mount_path).parts == ("/", "tmp")
+    assert container["env"] == [{"name": "HOME", "value": tmp_mount_path}]
     assert container["securityContext"] == {
         "runAsNonRoot": True,
         "runAsUser": 1000,
@@ -353,7 +355,7 @@ def test_copy_ca_job(env: str) -> None:
     }
     mounts = {m["name"]: m for m in container["volumeMounts"]}
     assert mounts["work"]["mountPath"] == "/work" and mounts["work"]["readOnly"] is True
-    assert mounts["tmp"]["mountPath"] == "/tmp"  # noqa: S108 - literal container path
+    assert mounts["tmp"]["mountPath"] == tmp_mount_path
     volumes = {v["name"]: v for v in pod["volumes"]}
     assert volumes["tmp"] == {"name": "tmp", "emptyDir": {}}
     assert volumes["work"]["projected"]["sources"] == [
@@ -471,7 +473,13 @@ def test_eso_stores_and_generators() -> None:
             }
         else:
             assert d["metadata"]["name"] == "password-43"
-            assert d["spec"] == {"length": 43, "digits": 8, "symbols": 0, "allowRepeat": True}
+            assert d["spec"] == {
+                "length": 43,
+                "digits": 8,
+                "symbols": 0,
+                "noUpper": False,
+                "allowRepeat": True,
+            }
 
 
 def test_pg_role_external_secrets() -> None:
