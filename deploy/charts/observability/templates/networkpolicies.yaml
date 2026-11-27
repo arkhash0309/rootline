@@ -1,0 +1,105 @@
+# Allow-rules for namespace `observability`, which has a default-deny policy (ARC-010, chart
+# `namespaces`, W1-T10). Source namespaces are matched by the label kubernetes.io/metadata.name.
+# Every policy selects all pods (`podSelector: {}`); a rule limits only the destination ports.
+# Port 4317 is also used by Tempo's OTLP receiver (collector to Tempo), so the OTLP rule covers it.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+# OTLP from every namespace (workload and Rootline services to the collector; collector to Tempo).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otlp-ingress
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - {protocol: TCP, port: 4317}
+        - {protocol: TCP, port: 4318}
+---
+# Query APIs: Prometheus 9090, Loki 3100, Tempo 3200 from `rootline` (mcp-telemetry) and `observability`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-query-ingress
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range list "rootline" "observability" }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: 9090}
+        - {protocol: TCP, port: 3100}
+        - {protocol: TCP, port: 3200}
+---
+# Alertmanager 9093 from `observability` only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alertmanager-ingress
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - {protocol: TCP, port: 9093}
+---
+# Prometheus Operator admission webhook: the kube-apiserver (a node address, not a pod) calls port 10250.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-operator-webhook-ingress
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 10250}
+---
+# Egress: scraping and pipelines reach pods in every namespace; Prometheus scrapes the kubelet
+# (10250) and the kube-apiserver; the collector's k8sattributes and the operator call the kube-apiserver.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-scrape
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 6443}
+        - {protocol: TCP, port: 10250}

@@ -8,3 +8,4 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Added ADRs 0001-0036 (W1-T04)
 - [agent] Added rootline-wiki agent skill (W1-T05)
 - [agent] Added rootline_common foundation modules (W1-T07)
+- [agent] Added observability and postgres charts and the render_versions Chart.yaml step (W1-T11)
