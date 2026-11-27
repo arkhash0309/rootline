@@ -1,4 +1,4 @@
-"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12)."""
+"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12, PG-25)."""
 
 from __future__ import annotations
 
@@ -32,11 +32,61 @@ KEPT_COMPONENTS = [
 ]
 WORKLOAD_KINDS = ("Deployment", "StatefulSet")
 KIND_ORDER = ["ServiceAccount", "ConfigMap", "Service", "Deployment", "StatefulSet"]
+# Kinds that the reference rule can keep, and the shared file of each (PG-25 D1, D2).
+REFERENCED_KINDS = ("ServiceAccount", "ConfigMap")
+SHARED_STEMS = {"ServiceAccount": "serviceaccount", "ConfigMap": "configmaps"}
+# Objects Kubernetes creates in every namespace; a reference to one is never an error (PG-25 D3).
+AUTO_CREATED = frozenset({("ServiceAccount", "default"), ("ConfigMap", "kube-root-ca.crt")})
+
+
+class UnresolvedReferenceError(ValueError):
+    """A kept workload references an object that is not in the output (PG-25 D3)."""
+
+    def __init__(self, errors: list[str]) -> None:
+        super().__init__("\n".join(errors))
+        self.errors = errors
 
 
 def component_of(obj: dict[str, Any]) -> str:
     labels = obj.get("metadata", {}).get("labels", {}) or {}
     return str(labels.get("app.kubernetes.io/component") or obj["metadata"]["name"])
+
+
+def pod_references(spec: dict[str, Any]) -> set[tuple[str, str, bool]]:
+    """(kind, name, optional) of every object a pod spec references by name (PG-25 D1)."""
+    refs: set[tuple[str, str, bool]] = set()
+    account = spec.get("serviceAccountName") or spec.get("serviceAccount")
+    if account:
+        refs.add(("ServiceAccount", account, False))
+    for pull in spec.get("imagePullSecrets") or []:
+        refs.add(("Secret", pull["name"], False))
+    for vol in spec.get("volumes") or []:
+        if "configMap" in vol:
+            refs.add(("ConfigMap", vol["configMap"]["name"], bool(vol["configMap"].get("optional"))))
+        if "secret" in vol:
+            refs.add(("Secret", vol["secret"]["secretName"], bool(vol["secret"].get("optional"))))
+        for src in (vol.get("projected") or {}).get("sources") or []:
+            if "configMap" in src:
+                refs.add(("ConfigMap", src["configMap"]["name"], bool(src["configMap"].get("optional"))))
+            if "secret" in src:
+                refs.add(("Secret", src["secret"]["name"], bool(src["secret"].get("optional"))))
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        for src in c.get("envFrom") or []:
+            if "configMapRef" in src:
+                refs.add(
+                    ("ConfigMap", src["configMapRef"]["name"], bool(src["configMapRef"].get("optional")))
+                )
+            if "secretRef" in src:
+                refs.add(("Secret", src["secretRef"]["name"], bool(src["secretRef"].get("optional"))))
+        for e in c.get("env") or []:
+            value_from = e.get("valueFrom") or {}
+            if "configMapKeyRef" in value_from:
+                ref = value_from["configMapKeyRef"]
+                refs.add(("ConfigMap", ref["name"], bool(ref.get("optional"))))
+            if "secretKeyRef" in value_from:
+                ref = value_from["secretKeyRef"]
+                refs.add(("Secret", ref["name"], bool(ref.get("optional"))))
+    return refs
 
 
 def _set_env(container: dict[str, Any], name: str, value: str) -> None:
@@ -51,7 +101,6 @@ def _set_env(container: dict[str, Any], name: str, value: str) -> None:
 def _fix_otel(container: dict[str, Any]) -> None:
     for e in container.get("env", []):
         if e["name"] == "OTEL_COLLECTOR_NAME":
-            e.pop("valueFrom", None)
             e["value"] = COLLECTOR_FQDN
         elif e["name"] == "OTEL_EXPORTER_OTLP_ENDPOINT" and "$(OTEL_COLLECTOR_NAME)" not in e.get(
             "value", ""
@@ -126,18 +175,27 @@ def network_policies() -> list[dict[str, Any]]:
 
 def transform(docs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     out: dict[str, list[dict[str, Any]]] = {}
+    placed: set[tuple[str, str]] = set()  # (kind, name) of every object already in `out`
+    candidates: dict[tuple[str, str], dict[str, Any]] = {}  # unplaced ServiceAccounts and ConfigMaps
+    # (kind, name) -> {(component, workload kind, workload name)} of the kept workloads referencing it
+    referrers: dict[tuple[str, str], set[tuple[str, str, str]]] = {}
+    required: set[tuple[str, str]] = set()  # referenced at least once without optional: true
     for original in docs:
         obj = copy.deepcopy(original)
         if obj["kind"] == "Secret":
             continue
         obj["metadata"]["namespace"] = "shop"
         obj["metadata"].pop("managedFields", None)
+        key = (obj["kind"], obj["metadata"]["name"])
         if obj["kind"] == "ConfigMap" and obj["metadata"]["name"] == "flagd-config":
             _flags_off(obj)
             out.setdefault("flagd-config", []).append(obj)
+            placed.add(key)
             continue
         comp = component_of(obj)
         if comp not in KEPT_COMPONENTS:
+            if obj["kind"] in REFERENCED_KINDS:
+                candidates[key] = obj
             continue
         if obj["kind"] in WORKLOAD_KINDS:
             obj["metadata"].setdefault("labels", {})["app.kubernetes.io/part-of"] = "rootline-workload"
@@ -157,7 +215,32 @@ def transform(docs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                     ("LOCUST_AUTOSTART", "true"),
                 ):
                     _set_env(spec["containers"][0], name, value)
+            for kind, name, optional in pod_references(spec):
+                referrers.setdefault((kind, name), set()).add((comp, obj["kind"], obj["metadata"]["name"]))
+                if not optional:
+                    required.add((kind, name))
         out.setdefault(comp, []).append(obj)
+        placed.add(key)
+    errors: set[str] = set()
+    for key in sorted(referrers):
+        kind, name = key
+        if key in placed or key in AUTO_CREATED:
+            continue
+        if kind in REFERENCED_KINDS and key in candidates:
+            comps = sorted({comp for comp, _, _ in referrers[key]})
+            stem = comps[0] if len(comps) == 1 else SHARED_STEMS[kind]
+            out.setdefault(stem, []).append(candidates[key])
+            placed.add(key)
+            continue
+        if key not in required:
+            continue
+        reason = (
+            "Secrets are removed by WKL-010 step 2" if kind == "Secret" else "not in the helm template output"
+        )
+        for _, wkind, wname in referrers[key]:
+            errors.add(f"unresolved reference {wkind}/{wname} -> {kind}/{name} ({reason})")
+    if errors:
+        raise UnresolvedReferenceError(sorted(errors))
     for objs in out.values():
         objs.sort(
             key=lambda o: (

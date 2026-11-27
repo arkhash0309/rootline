@@ -1,5 +1,7 @@
 """Render the workload into rootline-env (WKL-001). Usage:
-uv run python scripts/render_workload.py --out <rootline-env>/workload
+  uv run python scripts/render_workload.py --out <rootline-env>/workload
+Exit codes: 0 written; 3 a kept workload references an object missing from the output (PG-25 D3),
+nothing written. A failing helm command raises subprocess.CalledProcessError (exit 1).
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.proc import run
 from scripts.versions_lib import REPO, load_versions
-from scripts.workload_transforms import dump, transform
+from scripts.workload_transforms import UnresolvedReferenceError, dump, transform
 
 
 def main() -> int:
@@ -38,7 +40,12 @@ def main() -> int:
             str(REPO / "deploy/upstream/otel-demo/values.yaml"),
         ]
     ).stdout
-    files = transform([d for d in yaml.safe_load_all(rendered) if d])
+    try:
+        files = transform([d for d in yaml.safe_load_all(rendered) if d])
+    except UnresolvedReferenceError as exc:  # PG-25 D3: report every error, write nothing
+        for line in exc.errors:
+            print(f"render_workload: {line}", file=sys.stderr)
+        return 3
     args.out.mkdir(parents=True, exist_ok=True)
     for stale in args.out.glob("*.yaml"):
         stale.unlink()
