@@ -43,6 +43,7 @@ WIK-001: `wiki/` is the persistent working memory for the AI coding agents that 
 - [adr/0038-ruff-scope-and-formatting.md](adr/0038-ruff-scope-and-formatting.md) — ADR 0038 — Ruff excludes Markdown; plan code blocks fix content, not formatting (spec-gap)
 - [adr/0039-commit-trailers.md](adr/0039-commit-trailers.md) — ADR 0039 — Commit attribution trailer per agent role (spec-gap)
 - [adr/0040-swarm-plan-amendments-w1-t16.md](adr/0040-swarm-plan-amendments-w1-t16.md) — ADR 0040 — Swarm tooling plan amendments from the W1-T16 review (spec-gap)
+- [adr/0041-w1-t02-version-gaps.md](adr/0041-w1-t02-version-gaps.md) — ADR 0041 — Version pinning gaps found in W1-T02 (spec-gap)
 - [architecture.md](architecture.md) — Living architecture: context diagram and component table with links to the spec.
 - [components/agent.md](components/agent.md) — Component page for `agent` (WIK-010).
 - [components/api.md](components/api.md) — Component page for `api` (WIK-010).
@@ -88,3 +89,4 @@ WIK-001: `wiki/` is the persistent working memory for the AI coding agents that 
 - [runbooks/workstation-setup.md](runbooks/workstation-setup.md) — Install and verify the WSL 2 workstation (GEN-040).
 - [security/threat-model.md](security/threat-model.md) — Threat model: SEC-140 summary table.
 - [status.md](status.md) — Current milestone, done, in progress, next and blockers (WIK-012).
+- [versions.md](versions.md) — pin date and resolved versions (GEN-050)
