@@ -7,12 +7,6 @@ global:
   artifactsBucket: ""
   ingressIP: ""
 
-# Image of the copy-ca PostSync Job (PG-22, ADR 0041). Equals
-# `<kubectl-image.repo>:v<kubectl-image.version>@<kubectl-image.digest>` of versions.yaml;
-# tests/repo/test_root_chart.py::test_copy_ca_image_matches_versions_yaml fails when they differ.
-copyCa:
-  image: docker.io/rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe
-
 # Namespaces that hold ExternalSecrets using the Password generators (SEC-100 inventory: rootline-data for the
 # DB roles, rootline, keycloak and observability for the generated application secrets).
 generatorNamespaces: [rootline-data, rootline, keycloak, observability]

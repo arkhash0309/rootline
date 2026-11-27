@@ -6,10 +6,13 @@ spec:
   valuesContent: |-
     deployment:
       replicas: 1
+    gateway:
+      enabled: false
     providers:
       kubernetesGateway:
         enabled: true
     ports:
       websecure:
-        tls:
-          enabled: true
+        http:
+          tls:
+            enabled: true

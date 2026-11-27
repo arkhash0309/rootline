@@ -68,6 +68,7 @@ def test_workload_ignores_load_generator_env() -> None:
 
 
 def test_namespaces_pss() -> None:
+    """ARC-010, ADR 0046 O3 item 1: observability is privileged with warn and audit baseline."""
     out = run(["helm", "template", "ns", str(REPO / "deploy/charts/namespaces")]).stdout
     ns = {
         d["metadata"]["name"]: d["metadata"]["labels"]
@@ -80,7 +81,7 @@ def test_namespaces_pss() -> None:
         "rootline-lab": "restricted",
         "rootline-secrets": "restricted",
         "keycloak": "restricted",
-        "observability": "baseline",
+        "observability": "privileged",
         "shop": "baseline",
         "argocd": "baseline",
         "chaos-mesh": "privileged",
@@ -95,6 +96,16 @@ def test_namespaces_pss() -> None:
         assert ns[name]["pod-security.kubernetes.io/enforce"] == level, name
         assert ns[name]["pod-security.kubernetes.io/enforce-version"] == "latest", name
         assert ns[name]["rootline.dev/managed"] == "true", name
+    # ADR 0046 O3 item 1: only observability carries warn/audit labels (all other levels stay unwarned).
+    assert {k: v for k, v in ns["observability"].items() if "/warn" in k or "/audit" in k} == {
+        "pod-security.kubernetes.io/warn": "baseline",
+        "pod-security.kubernetes.io/warn-version": "latest",
+        "pod-security.kubernetes.io/audit": "baseline",
+        "pod-security.kubernetes.io/audit-version": "latest",
+    }
+    for name, labels in ns.items():
+        if name != "observability":
+            assert not [k for k in labels if "/warn" in k or "/audit" in k], name
 
 
 def test_namespaces_default_deny_and_dns() -> None:
@@ -266,7 +277,8 @@ def test_traefik_helmchartconfig() -> None:
     assert values == {
         "deployment": {"replicas": 1},
         "providers": {"kubernetesGateway": {"enabled": True}},
-        "ports": {"websecure": {"tls": {"enabled": True}}},
+        "gateway": {"enabled": False},
+        "ports": {"websecure": {"http": {"tls": {"enabled": True}}}},
     }
 
 
@@ -291,8 +303,8 @@ def test_platform_config_tls_and_dns(env: str) -> None:
     assert gw["metadata"]["namespace"] == "kube-system"
     assert gw["spec"]["gatewayClassName"] == "traefik"
     listeners = {entry["name"]: entry for entry in gw["spec"]["listeners"]}
-    assert listeners["http"]["port"] == 80
-    assert listeners["https"]["port"] == 443
+    assert listeners["http"]["port"] == 8000
+    assert listeners["https"]["port"] == 8443
     assert listeners["https"]["tls"] == {
         "mode": "Terminate",
         "certificateRefs": [{"name": "rootline-wildcard-tls"}],
@@ -410,9 +422,21 @@ def test_copy_ca_rbac(env: str) -> None:
 
 
 def test_copy_ca_image_matches_versions_yaml() -> None:
-    values = yaml.safe_load((REPO / "deploy/charts/platform-config/values.yaml").read_text())
+    """GEN-050, PG-22, ADR 0046 T11: one source for the copy-ca image.
+
+    The generated file `deploy/charts/platform-config/files/versions.yaml` (written by
+    `scripts/render_versions.py`) holds exactly the `kubectl-image` row of `versions.yaml`, and the
+    rendered Job `copy-ca` uses `<repo>:v<version>@<digest>` of that row.
+    """
+    generated_path = REPO / "deploy/charts/platform-config/files/versions.yaml"
     v = yaml.safe_load((REPO / "versions.yaml").read_text())["kubectl-image"]
-    assert values["copyCa"]["image"] == f"{v['repo']}:v{v['version']}@{v['digest']}"
+    assert yaml.safe_load(generated_path.read_text()) == {"kubectl-image": v}
+    values = yaml.safe_load((REPO / "deploy/charts/platform-config/values.yaml").read_text())
+    assert "copyCa" not in values
+    job = by_kind_name(tmpl("platform-config", "local"))[("Job", "copy-ca")]
+    (container,) = job["spec"]["template"]["spec"]["containers"]
+    assert container["name"] == "copy-ca"
+    assert container["image"] == f"{v['repo']}:v{v['version']}@{v['digest']}"
 
 
 def test_eso_stores_and_generators() -> None:

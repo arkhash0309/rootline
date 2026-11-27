@@ -7,6 +7,14 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: {{ .pss }}
     pod-security.kubernetes.io/enforce-version: latest
+{{- with .warn }}
+    pod-security.kubernetes.io/warn: {{ . }}
+    pod-security.kubernetes.io/warn-version: latest
+{{- end }}
+{{- with .audit }}
+    pod-security.kubernetes.io/audit: {{ . }}
+    pod-security.kubernetes.io/audit-version: latest
+{{- end }}
     rootline.dev/managed: "true"
 {{- if .defaultDeny }}
 ---
