@@ -62,7 +62,7 @@ jobs:
         with: {tflint_version: "v${{ env.V_TFLINT }}"}
       - run: tflint --recursive --chdir infra/terraform
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with: {scan-type: config, scan-ref: infra/terraform, exit-code: "1", severity: "CRITICAL,HIGH"}
+        with: {version: "v${{ env.V_TRIVY }}", scan-type: config, scan-ref: infra/terraform, exit-code: "1", severity: "CRITICAL,HIGH"}
   manifests:
     runs-on: ubuntu-24.04
     steps:
@@ -112,7 +112,7 @@ jobs:
         with: {fetch-depth: 0}
       - run: cat .github/versions.env >> "$GITHUB_ENV"
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        env: {GITHUB_TOKEN: "${{ github.token }}", GITLEAKS_VERSION: "${{ env.V_GITLEAKS }}"}
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with: {version: "${{ env.V_UV }}"}
       - run: uv export --all-packages --frozen --no-hashes > requirements.txt && uvx pip-audit -r requirements.txt
