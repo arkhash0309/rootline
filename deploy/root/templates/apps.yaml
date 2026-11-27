@@ -26,11 +26,11 @@ spec:
       parameters:
         {{- include "rootline.root.globalParameters" $ | nindent 8 }}
   {{- else if eq $app.kind "upstream" }}
-  {{- $v := index $versions $app.versionKey | default dict }}
+  {{- $v := required (printf "deploy/root/files/versions.yaml has no key %s" $app.versionKey) (index $versions $app.versionKey) }}
   sources:
-    - repoURL: {{ $app.repo | default $v.repo }}
+    - repoURL: {{ $v.repo }}
       chart: {{ $app.chart }}
-      targetRevision: {{ $app.chartVersion | default $v.chart | quote }}
+      targetRevision: {{ $v.chart | quote }}
       helm:
         valueFiles:
           - $values/deploy/upstream/{{ $app.versionKey }}/values-{{ $.Values.env }}.yaml

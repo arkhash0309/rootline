@@ -134,7 +134,7 @@ def test_namespaces_default_deny_and_dns() -> None:
 def test_apps_contract_matches_plan() -> None:
     """INF-020, ADR 0046 T1: the values contract of the root chart (every later wave edits `apps`).
 
-    Only `prometheus-crds` may carry `repo` and `chartVersion` (removed in W1-P3 integration step 3).
+    No Application carries `repo` or `chartVersion`: versions come only from files/versions.yaml (GEN-050).
     """
     values = yaml.safe_load((REPO / "deploy/root/values.yaml").read_text())
     top = {k: v for k, v in values.items() if k != "apps"}
@@ -151,12 +151,16 @@ def test_apps_contract_matches_plan() -> None:
         "ingressIP": "",
     }
     for name, app in values["apps"].items():
-        if name != "prometheus-crds":
-            assert "repo" not in app, name
-            assert "chartVersion" not in app, name
-    prom_app = values["apps"]["prometheus-crds"]
-    assert prom_app["repo"] == "https://prometheus-community.github.io/helm-charts"
-    assert prom_app["chartVersion"] == "33.0.2"
+        assert "repo" not in app, name
+        assert "chartVersion" not in app, name
+    assert values["apps"]["prometheus-crds"] == {
+        "enabled": True,
+        "wave": -3,
+        "kind": "upstream",
+        "versionKey": "prometheus-operator-crds",
+        "chart": "prometheus-operator-crds",
+        "namespace": "observability",
+    }
     waves = {name: (a["enabled"], a["wave"]) for name, a in values["apps"].items()}
     assert waves == {
         "namespaces": (True, -4),
@@ -725,9 +729,9 @@ def test_upstream_readme_lists_every_chart_repo() -> None:
 
 
 def test_render_manifests_script() -> None:
-    """INF-020, GEN-012, ADR 0046 T8: renders every env as one YAML stream; `--allow-missing` skips charts."""
+    """INF-020, GEN-012, ADR 0046 T8: renders every env as one YAML stream; exit 0."""
     result = subprocess.run(  # noqa: S603 - fixed argument list, no shell (GEN-041)
-        [sys.executable, str(REPO / "scripts/render_manifests.py"), "--allow-missing"],
+        [sys.executable, str(REPO / "scripts/render_manifests.py")],
         check=False,
         capture_output=True,
         text=True,

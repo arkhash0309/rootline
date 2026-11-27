@@ -9,9 +9,8 @@ gcpProject: ""
 k8sIssuer: https://kubernetes.default.svc.cluster.local
 artifactsBucket: ""
 ingressIP: ""
-# Optional per-Application keys: `envs` limits it to the listed environments; `repo` and `chartVersion` override the
-# `repo` and `chart` of the versions.yaml row (used by prometheus-crds until scripts/render_versions.py copies the
-# `prometheus-operator-crds` row into deploy/root/files/versions.yaml; the test suite checks the equality).
+# Optional per-Application key: `envs` limits it to the listed environments. Repository and chart version of an
+# `upstream` Application come only from its `versionKey` row in files/versions.yaml (GEN-050, ADR 0046 T1).
 apps:
   namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces}
   gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api}
@@ -20,7 +19,7 @@ apps:
   cnpg-operator:     {enabled: true,  wave: -3, kind: upstream, versionKey: cloudnative-pg, chart: cloudnative-pg, namespace: cnpg-system}
   kyverno:           {enabled: true,  wave: -3, kind: upstream, versionKey: kyverno, chart: kyverno, namespace: kyverno}
   chaos-mesh:        {enabled: true,  wave: -3, kind: upstream, versionKey: chaos-mesh, chart: chaos-mesh, namespace: chaos-mesh, envs: [local]}
-  prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability, repo: https://prometheus-community.github.io/helm-charts, chartVersion: "33.0.2"}
+  prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability}
   traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
   platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
   postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
