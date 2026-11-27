@@ -31,6 +31,13 @@ Mirrors `2026-11-26-rootline-schedule.yaml` (week 1); `uv run python scripts/swa
 | W1-P3 | parallel | W1-P2 | W1-T09 (`feat/w1-workload-render`); W1-T10 (`feat/w1-gitops-root`); W1-T11 (`feat/w1-observability-postgres`); W1-T14 (`feat/w1-ci`) | W1-T09 steps 6, 7 → W1-S3; W1-T14 steps 2, 3 → W1-S3 |
 | W1-S3 | sequential | W1-P3 | W1-T12 (`feat/w1-task-up`); W1-T13 (`feat/w1-baseline-gate`); W1-T15 (no branch) | — |
 
+**W1-P1 integration steps (PG-22, ADR 0041 decisions 1 and 2).** These steps run in this order, in addition to overview §7.5 and §7.6:
+
+1. The coordinator squash-merges the planner PR of branch `docs/w1-t02-gaps` into `develop`. That PR touches only `docs/superpowers/plans/`, `docs/superpowers/specs/2026-11-25-rootline-design.md`, `wiki/adr/0041-w1-t02-version-gaps.md` and `wiki/versions.md` (the three-line stub of W1-T02 "Files").
+2. The coordinator records the resulting `origin/develop` commit as the W1-P1 stage base in `.swarm/stages/W1-P1.json`.
+3. After the `docs/w1-t02-gaps` PR merges to develop, the W1-T02 implementer rebases `feat/w1-versions` onto the new `origin/develop` (`git fetch origin && git rebase origin/develop`; the rebase is clean because the PR touches only plans, spec, ADR and `wiki/versions.md`, and the `wiki/versions.md` stub on `develop` is byte-identical to the one on `feat/w1-versions`), then pushes with `git push --force-with-lease origin feat/w1-versions` (task branches are unprotected, overview §7.6). Only then is `uv run python scripts/check_ownership.py --task W1-T02 --base origin/develop --branch HEAD` run in the W1-T02 worktree; it reads the schedule YAML from that checkout, which now lists `wiki/versions.md` in W1-T02 `owns`. Expected: no output, exit 0. If the rebase stops on a conflict, the implementer runs `git rebase --abort` and reports `STATUS: BLOCKED` with the conflicting paths; the planner then designs the resolution.
+4. The coordinator dispatches W1-T03 (branch `feat/w1-wiki`, base = the stage base of step 2), creates `integration/w1-p1` from the same stage base, and continues with overview §7.6.
+
 ---
 
 ### Task W1-T01: Repository skeleton and uv workspace
@@ -608,17 +615,28 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ### Task W1-T02: Resolve and enforce pinned versions
 
-**Requirement IDs:** GEN-050, GEN-051.
+**Requirement IDs:** GEN-050, GEN-051, PG-22.
 **Depends on:** W1-T01. **Branch:** `feat/w1-versions`.
+
+> **Amended 2026-11-27 after the W1-T02 implementation, per PG-22 (overview §5; ADR 0041).** The "Files" and "Interfaces" lists, the version table rows `pathspec`, `kubectl-image` and the image-row note, Steps 3, 4, 5, 6, 7, 8 and 9 were changed: Step 3's chart-row note, Step 4 (`scripts/check_versions.py`), Step 5 (pin date and chart-row rule), Step 6 (`pathspec`/`mypy`), Step 7 (`scripts/check_versions.py` run), Step 8 (the stub it replaces) and Step 9 (`wiki/versions.md` in `git add`). `wiki/versions.md` is in W1-T02's `owns` and in W1-T03's `excludes` in `docs/superpowers/plans/2026-11-26-rootline-schedule.yaml`. The `wiki/versions.md` stub is already on `develop` from the `docs/w1-t02-gaps` PR, and `feat/w1-versions` is rebased onto that `develop` before the ownership check ("W1-P1 integration steps" under "Execution schedule" above).
 
 **Files:**
 - Create: `versions.yaml`, `scripts/check_versions.py`, `scripts/render_versions.py`, `scripts/versions_lib.py`
 - Create (generated, committed): `deploy/root/files/versions.yaml`, `.github/versions.env`
-- Create: `wiki/versions.md` (wiki skeleton arrives in W1-T03; create this one page now)
+- Keep: `wiki/versions.md`, the stub with exactly this content (three lines, LF line endings, final newline): line 1 `# Versions`, line 2 empty, line 3 `Status: not implemented yet — planned in W1-T02 step 8.` The stub already exists on `develop`: the planner committed it in the `docs/w1-t02-gaps` PR (PG-22, ADR 0041 decision 1), so the `wiki/index.md` link of W1-T03 resolves on every branch. W1-T02 keeps the identical file on `feat/w1-versions` (Step 9 `git add` still includes it; after the rebase of "W1-P1 integration steps" it is no longer in `git diff origin/develop...feat/w1-versions`, and the merge into `integration/w1-p1` is clean). W1-T03 does not create or edit this page (it is in W1-T03's `excludes`, PG-22); Step 8 replaces the stub in stage W1-S3
 - Test: `tests/repo/test_versions.py`
 
 **Interfaces:**
 - Produces: `versions.yaml` schema below; `scripts.versions_lib.load_versions(path: Path = REPO/"versions.yaml") -> dict[str, Any]`; `scripts.versions_lib.version_of(key: str) -> str` (returns the string value, or the `version` field of a mapping); `uv run python scripts/render_versions.py [--check]`.
+- Produces: CLI `uv run python scripts/check_versions.py` (no arguments; PG-22). It loads `versions.yaml` at the repository root with `load_versions()` and runs `validate()` over it. Output and exit codes:
+
+| Case | Output (stderr) | Exit |
+|---|---|---|
+| No validation error | nothing | 0 |
+| `validate()` returns one or more errors | one line per error, exactly the error string (format `<key>: <problem>`, for example `python: '3.11.9' does not match ^3\.12\.\d+$`), in the order `validate()` returns them | 1 |
+| `versions.yaml` is missing or unreadable (`OSError`), is not valid YAML (`yaml.YAMLError`), or its top level is not a mapping (`ValueError`) | one line `versions.yaml: <exception text>`, where every run of whitespace in the exception text (newlines included) is replaced by one space, for example `versions.yaml: [Errno 2] No such file or directory: '/home/arkhash0309/projects/rootline/versions.yaml'` | 2 |
+
+  It writes no file and makes no network call.
 
 **`versions.yaml` schema.** Top level is a mapping. Every key of the GEN-050 table is a top-level key with exactly that spelling. A value is either a version string, or a mapping with any of: `version` (string, required in a mapping), `chart` (chart version), `app` (application version), `repo` (Helm repo URL or image repo), `digest` (`sha256:<64 hex>`). Extra keys added during planning are allowed and listed in the table below. A top-level `pin_date: "YYYY-MM-DD"` is required.
 
@@ -647,13 +665,15 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 | `gateway-api` | latest standard-channel release 1.x | CRDs (INF-020 wave −4) |
 | `kind` | latest 0.x | CI e2e cluster |
 | `kubeconform`, `tflint`, `trivy`, `gitleaks`, `kyverno-cli`, `cosign`, `syft` | latest stable | CI tooling |
-| `pathspec` | latest 0.x | gitignore-style globs for `scripts/check_ownership.py` (W1-T16) |
+| `pathspec` | `0.12.1` (the latest 0.x release on 2026-11-27; 1.x exists and is outside the line). uv then resolves `mypy` to `1.19.1` inside the dev constraint `mypy>=1.18,<2`, because `mypy` 1.20 requires `pathspec` 1.x (PG-22) | gitignore-style globs for `scripts/check_ownership.py` (W1-T16) |
 | `jsonschema` | 4.x | registry and smoke file validation (W1-T16) |
 | `prometheus-operator-crds` | `{version, chart, repo}` latest stable chart | CRDs Application (W1-T10) |
 | `postgres-image` | `{version: "16", repo: ghcr.io/cloudnative-pg/postgresql, digest}` | CNPG image (W1-T11) |
-| `kubectl-image` | `{version, repo: bitnami/kubectl, digest}` matching the cluster minor | `copy-ca` Job (W1-T10) |
-| `busybox` | `{version: "1.37", digest: sha256:…}` | LAB-071 injection Job image |
+| `kubectl-image` | `{version: "1.36.<patch>", repo: "docker.io/rancher/kubectl", digest: "sha256:<64 hex>"}`: the highest Docker Hub tag `v1.36.<patch>` of `docker.io/rancher/kubectl` (same minor as `k3s` `v1.36.6+k3s1`), `version` is that tag without the leading `v`, `digest` is the multi-arch index digest of that tag. On 2026-11-27 this is tag `v1.36.2`, digest `sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe`. The repo changed from `bitnami/kubectl` because `bitnami/kubectl` publishes only the tag `latest` (kubectl 1.37.3 on 2026-11-27) and has no 1.36 tag (PG-22, ADR 0041). The image contains only `/bin/kubectl` (no shell), so the `copy-ca` Job runs `kubectl` alone (W1-T10 Step 5) | `copy-ca` Job (W1-T10) |
+| `busybox` | `{version: "1.37", repo: "docker.io/library/busybox", digest: "sha256:<64 hex>"}`. W1-T02 Step 5 records the 64-hex digest (the multi-arch index digest of tag `1.37`, "Image digest" lookup method); the implementer writes the concrete value | LAB-071 injection Job image |
 | `uv-image`, `python-image`, `node-image`, `opa-image` | `{version, repo, digest}` | CI-020 digest-pinned base images |
+
+Image rows (`postgres-image`, `kubectl-image`, `busybox`, `uv-image`, `python-image`, `node-image`, `opa-image`, and the `keycloak` and `keycloak-config-cli` mappings): `repo` is the fully qualified image repository, registry host included and tag excluded (PG-22). Docker Hub official images use `docker.io/library/<name>` (for example `docker.io/library/python`, `docker.io/library/busybox`), other Docker Hub images `docker.io/<namespace>/<name>` (for example `docker.io/openpolicyagent/opa`, `docker.io/rancher/kubectl`), other registries their own host (for example `ghcr.io/cloudnative-pg/postgresql`, `quay.io/keycloak/keycloak`). `digest` is the digest of the multi-arch index of the tag.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -803,9 +823,9 @@ def validate(data: dict[str, Any], keys: list[str] | None = None) -> list[str]:
     return errors
 ```
 
-For mapping values whose GEN-050 constraint is on the *chart* (`argo-cd` app is 3.x but chart has its own version), store `{version: <app version>, chart: <chart version>}`; the regex applies to `version`.
+For chart entries, `version` holds the value that the key's GEN-050 line constrains, and `CONSTRAINTS` applies to `version` (PG-22). The full rule is in Step 5 "Chart rows".
 
-- [ ] **Step 4: Implement `scripts/render_versions.py`**
+- [ ] **Step 4: Implement `scripts/render_versions.py` and `scripts/check_versions.py`**
 
 ```python
 """Render files that cannot read versions.yaml directly (GEN-050).
@@ -873,7 +893,51 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
+`scripts/check_versions.py` (PG-22, ADR 0041): CLI `uv run python scripts/check_versions.py`, no arguments. It runs `validate()` over `versions.yaml`; prints one line per error to stderr; exits 0 if there are no errors, 1 if there are validation errors, 2 if the file is missing or unreadable, is not valid YAML, or is not a mapping. The exact behaviour table is in "Interfaces" above. Final text:
+
+```python
+"""Validate versions.yaml against the GEN-050 version lines.
+
+Usage: uv run python scripts/check_versions.py
+Exit codes: 0 every key is present and satisfies its line; 1 at least one error (one stderr line per
+error, format `<key>: <problem>`); 2 versions.yaml is missing or unreadable, is not valid YAML, or is
+not a mapping (one stderr line).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.versions_lib import load_versions, validate
+
+
+def main() -> int:
+    try:
+        data = load_versions()
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # a yaml.YAMLError message spans several lines; the contract is one stderr line
+        print(f"versions.yaml: {' '.join(str(exc).split())}", file=sys.stderr)
+        return 2
+    errors = validate(data)
+    for error in errors:
+        print(error, file=sys.stderr)
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Verification: `uv run python scripts/check_versions.py; echo $?` prints `0` once `versions.yaml` is complete (Step 7).
+
 - [ ] **Step 5: Resolve versions on the pin date and write `versions.yaml`**
+
+The pin date of W1-T02 is **2026-11-27**, the date of the lookup (PG-22): `versions.yaml` has `pin_date: "2026-11-27"`, and every version and digest in it is the result of a lookup made on 2026-11-27.
 
 Use exactly these lookup methods. Take the newest stable (non-pre-release) version that satisfies the GEN-050 line.
 
@@ -888,26 +952,34 @@ Use exactly these lookup methods. Take the newest stable (non-pre-release) versi
 
 Helm repositories: `argo https://argoproj.github.io/argo-helm`, `prometheus-community https://prometheus-community.github.io/helm-charts`, `grafana https://grafana.github.io/helm-charts`, `open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts`, `chaos-mesh https://charts.chaos-mesh.org`, `kyverno https://kyverno.github.io/kyverno`, `external-secrets https://charts.external-secrets.io`, `jetstack https://charts.jetstack.io`, `cnpg https://cloudnative-pg.github.io/charts`, `traefik https://traefik.github.io/charts`.
 
-Store chart entries as `{version: <app version>, chart: <chart version>, repo: <repo URL>}`. For `opentelemetry-demo`, the value is exactly `{version: "0.42.8", chart: "0.42.8", app: "3.1.0", repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"}` (the regex applies to `version`, which equals the chart version).
+Chart rows (PG-22). A chart entry is a mapping `{version, chart, app, repo}`: `version` holds the value that the key's GEN-050 line constrains, and the `CONSTRAINTS` regex applies to it; `chart` holds the Helm chart version; `app` holds the application version (the chart's `appVersion`): it MUST be written when the application version differs from the value in `version`, and MAY be written when the two are equal (for example `chaos-mesh` `{version: "2.8.8", chart: "2.8.8", app: "2.8.8"}`); `repo` is the Helm repository URL.
+
+| Key | GEN-050 line is on | `version` = | Example on 2026-11-27 |
+|---|---|---|---|
+| `argo-cd` | application (`argo-cd` (app) 3.x) | application version | `{version: "3.6.3", chart: "10.20.0", repo: "https://argoproj.github.io/argo-helm"}` |
+| `traefik` | application (Traefik 3.x) | application version | `{version: "3.8.0", chart: "43.0.0", repo: "https://traefik.github.io/charts"}` |
+| `kube-prometheus-stack`, `loki`, `tempo`, `opentelemetry-collector`, `chaos-mesh`, `kyverno`, `external-secrets`, `cert-manager`, `cloudnative-pg`, `opentelemetry-demo`, and the extra key `prometheus-operator-crds` | chart | chart version (equal to `chart`) | `loki`: `{version: "6.55.0", chart: "6.55.0", app: "3.6.7", repo: "https://grafana.github.io/helm-charts"}` |
+
+For `opentelemetry-demo`, the value is exactly `{version: "0.42.8", chart: "0.42.8", app: "3.1.0", repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"}` (the regex applies to `version`, which equals the chart version).
 
 `mcp` rule: pick the newest release whose README or changelog lists protocol revision `2026-07-28`. If none does, pin the newest release, set `mcp_protocol_revision: "2025-11-25"` in `versions.yaml`, and the W1-T04 ADR 0012 records the fallback (GEN-050).
 
 - [ ] **Step 6: Align `pyproject.toml` constraints**
 
-For every Python dependency, set the constraint in the member that uses it to `>=<resolved>,<<next major>>` (for 0.x packages: `>=<resolved>,<0.<minor+1>>`). Run `uv lock` and verify `uv.lock` resolves each to the version in `versions.yaml`: `uv run python -c "import tomllib;print([p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='fastapi'])"`.
+For every Python dependency, set the constraint in the member that uses it to `>=<resolved>,<<next major>>` (for 0.x packages: `>=<resolved>,<0.<minor+1>>`). `pathspec` is pinned to `0.12.1`, the latest 0.x release on 2026-11-27, so the root `dev` group constraint is `pathspec>=0.12.1,<0.13` (PG-22). The `mypy` constraint stays `mypy>=1.18,<2`; inside it uv resolves `mypy` `1.19.1`, because `mypy` 1.20 requires `pathspec` 1.x. This is expected and is not a failure of this step. Run `uv lock` and verify `uv.lock` resolves each to the version in `versions.yaml`: `uv run python -c "import tomllib;print([p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='fastapi'])"`.
 
 - [ ] **Step 7: Render and test**
 
-Run: `uv run python scripts/render_versions.py` then `uv run pytest tests/repo/test_versions.py -v` → PASS.
+Run: `uv run python scripts/render_versions.py`, then `uv run python scripts/check_versions.py` → no output, exit 0, then `uv run pytest tests/repo/test_versions.py -v` → PASS.
 
-- [ ] **Step 8: Write `wiki/versions.md`** (deferred to stage W1-S3, overview §7.3; W1-T03 creates the page as a stub in the same parallel stage)
+- [ ] **Step 8: Write `wiki/versions.md`** (deferred to stage W1-S3, overview §7.3; the stub is on `develop` from the `docs/w1-t02-gaps` PR, "Files" above, PG-22)
 
 Replace the stub's content with: a heading `# Versions`, the line `Pin date: <pin_date>`, a table `| Key | Version | Chart | Source command |` with one row per `versions.yaml` key, and a section `## Upgrade rule` quoting GEN-051.
 
 - [ ] **Step 9: Commit** (made at the end of step 7, per overview §7.3; step 8 commits separately on `feat/w1-versions-deferred`)
 
 ```bash
-git add versions.yaml scripts/ deploy/root/files/versions.yaml .github/versions.env pyproject.toml uv.lock tests/repo/test_versions.py libs services eval
+git add versions.yaml scripts/ deploy/root/files/versions.yaml .github/versions.env pyproject.toml uv.lock tests/repo/test_versions.py wiki/versions.md libs services eval
 git commit -m "build: pin versions in versions.yaml and render derived files
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
@@ -921,10 +993,12 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Depends on:** W1-T01. **Parallel-safe** with W1-T02. **Branch:** `feat/w1-wiki`.
 
 **Files:**
-- Create: every file in the WIK-002 tree except `wiki/adr/0001…` (W1-T04), `wiki/adr/0037…0040` (already on `develop`, PG-18 … PG-21; do not edit) and `wiki/versions.md` (W1-T02)
+- Create: every file in the WIK-002 tree except `wiki/adr/0001…` (W1-T04), `wiki/adr/0037…0041` (already on `develop`, PG-18 … PG-22; do not edit) and `wiki/versions.md` (the stub is on `develop` from the `docs/w1-t02-gaps` PR and is owned by W1-T02; in W1-T03's `excludes`, PG-22)
 - Create: `wiki/components/<slug>.md` for each slug in `COMPONENT_PAGES` below
 - Create: `scripts/wiki_lint.py`
 - Test: `tests/repo/test_wiki_lint.py`
+
+Base (PG-22, ADR 0041): `feat/w1-wiki` and `integration/w1-p1` start from the first `origin/develop` commit that contains `wiki/adr/0041-w1-t02-version-gaps.md` (the squash merge of `docs/w1-t02-gaps`), not from `f85bb63`. The coordinator records that commit as the W1-P1 stage base in `.swarm/stages/W1-P1.json` before it dispatches W1-T03 and before it creates `integration/w1-p1`. `scripts/check_ownership.py` reads the schedule YAML from the checkout it runs in, so `feat/w1-versions` (W1-T02, branched from `f85bb63`) sees the new W1-T02 `owns` only after a rebase: after the `docs/w1-t02-gaps` PR merges to develop, the W1-T02 implementer rebases `feat/w1-versions` onto the new `origin/develop` (`git rebase origin/develop`; the rebase is clean because the PR touches only plans, spec, ADR and `wiki/versions.md`), then pushes with `git push --force-with-lease origin feat/w1-versions`. Only then is `check_ownership.py --task W1-T02 --base origin/develop --branch HEAD` run in the W1-T02 worktree (full sequence: "W1-P1 integration steps" under "Execution schedule" above). If `feat/w1-wiki` already exists on an older base, the W1-T03 implementer rebases it onto the new stage base before Step 5.
 
 `scripts/wiki_lint.py` runs `git` through `scripts.proc.run` (created by W1-T16) and the test imports no `subprocess`, so both files pass `uv run ruff check` (after `uv run ruff format`) with no finding and without any `noqa` (PG-21, ADR 0040 items 1 and 9).
 
@@ -1128,7 +1202,7 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 
 | File | Required content |
 |---|---|
-| `wiki/index.md` | `# Rootline wiki`, a paragraph quoting WIK-001's spec/wiki split, then one bullet per wiki file: `- [<path>](<path>) — <one-line description>`. "Every wiki file" includes `adr/0037-swarm-state-dir.md`, `adr/0038-ruff-scope-and-formatting.md`, `adr/0039-commit-trailers.md` and `adr/0040-swarm-plan-amendments-w1-t16.md`, which are on `develop` before this task starts (PG-18 … PG-21); without their bullets `wiki_lint.py` reports `index-missing` for them |
+| `wiki/index.md` | `# Rootline wiki`, a paragraph quoting WIK-001's spec/wiki split, then one bullet per wiki file: `- [<path>](<path>) — <one-line description>`. "Every wiki file" includes `adr/0037-swarm-state-dir.md`, `adr/0038-ruff-scope-and-formatting.md`, `adr/0039-commit-trailers.md`, `adr/0040-swarm-plan-amendments-w1-t16.md` and `adr/0041-w1-t02-version-gaps.md`, which are on `develop` before this task starts (PG-18 … PG-22); without their bullets `wiki_lint.py` reports `index-missing` for them. It also includes `versions.md` (bullet `- [versions.md](versions.md) — pin date and resolved versions (GEN-050)`); the file is the W1-T02 stub already on `develop`, which this task does not create or edit (PG-22) |
 | `wiki/status.md` | WIK-012 format; `## Current milestone: Week 1 — Foundations`; In progress lists W1 tasks; Blockers `None` |
 | `wiki/log.md` | `# Log` then `## <today>` and `- [agent] Created wiki skeleton (W1-T03)` |
 | `wiki/architecture.md` | the spec §5.1 diagram verbatim in a code block; a table `| Component | Namespace | Spec | Wiki page |` for ARC-001 |
@@ -1137,7 +1211,7 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 | `wiki/adr/0000-template.md` | WIK-011 template: `# NNNN — <title>`, `Status: proposed`, `Date:`, `## Context`, `## Decision`, `## Consequences`, `## Alternatives considered`, `## Spec references` |
 | `wiki/components/<slug>.md` | WIK-010 nine headings in order (Purpose, Requirement IDs, Interfaces, Configuration, Dependencies, Data owned, Failure modes and handling, Runbook links, Last verified) |
 | `wiki/runbooks/workstation-setup.md` | sections in order: `## Windows side` (WSL 2 with distribution `Ubuntu` 26.04 LTS, the exact GEN-040 `.wslconfig` content, `wsl --shutdown`, the browser); `## WSL basics` (`/etc/wsl.conf` with `[boot] systemd=true` and `[user] default=arkhash0309`, `sudo apt update && sudo apt upgrade -y`, the support packages of GEN-040); `## Tools` — one subsection per GEN-040 row with the exact commands used on 2026-11-26 (root part: the script `~/rootline-root-setup.sh` — apt packages including `docker-buildx`, `[interop] appendWindowsPath=false`, Ollama installer with the service disabled; user part: release binaries into `~/.local/bin`, uv + Python 3.12, fnm + Node 24, the gcloud tarball with `gke-gcloud-auth-plugin`, the Linux Claude Code build; `gh` logged in as `arkhash0309` with `gh auth setup-git`; added in week 6: `npx playwright install --with-deps chromium`); `## Repositories` (clone into `/home/arkhash0309/projects/rootline` and `/home/arkhash0309/projects/rootline-env`, never under `/mnt/c`; VS Code users open them with the Remote - WSL extension); a section `## Anthropic` describing O-8 and PG-13; a section `## Verify` saying run `task doctor` |
-| `wiki/versions.md` | title `# Versions` + `Status: not implemented yet — planned in W1-T02 step 8.` |
+| `wiki/versions.md` | the W1-T02 stub, already on `develop` from the `docs/w1-t02-gaps` PR: do not create or edit it; list it in `index.md` (PG-22) |
 | `wiki/runbooks/local-up.md` | already created by W1-T08 (stage W1-S2): do not create or edit it; list it in `index.md` |
 | `wiki/runbooks/capture-batch.md`, `gcp-bootstrap.md`, `gke-spin-up.md`, `gke-teardown.md`, `github-apps.md`, `interview-demo.md`, `recovery.md` | title + `Status: not implemented yet — planned in <task>` (capture-batch: W2-T12; gcp-bootstrap: W7-T01; gke-spin-up/teardown: W7-T06; github-apps: W2-T07 and W3-T10; interview-demo: W8-T06; recovery: W2-T12) |
 | `wiki/security/threat-model.md` | the SEC-140 table verbatim; `Status: summary only — full STRIDE in W8-T04` |
@@ -1146,7 +1220,7 @@ Content rules for every page: factual, dated, no `TODO`/`TBD`. Pages for things 
 - [ ] **Step 6: Run the lint for real**
 
 Run: `uv run python scripts/wiki_lint.py`
-Expected: only `missing-adr: 0001` … `missing-adr: 0025` (fixed by W1-T04). Do not merge this PR until W1-T04 is merged into the same branch, or merge W1-T04 first. **Ordering rule:** create W1-T04 on top of this branch (`feat/w1-wiki`) and open a single PR for W1-T03 + W1-T04.
+Expected: only `missing-adr: 0001` … `missing-adr: 0025` (fixed by W1-T04). No `broken-link: index.md -> versions.md` line appears: the `wiki/versions.md` stub is on the stage base from the `docs/w1-t02-gaps` PR (PG-22). Do not merge this PR until W1-T04 is merged into the same branch, or merge W1-T04 first. **Ordering rule:** create W1-T04 on top of this branch (`feat/w1-wiki`) and open a single PR for W1-T03 + W1-T04.
 
 - [ ] **Step 7: Commit**
 
@@ -1167,7 +1241,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 **Files:**
 - Create: `wiki/adr/0001-target-role.md` … `wiki/adr/0036-wsl-development.md` (36 files)
 - Modify: `wiki/index.md` (list them), `docs/superpowers/specs/2026-11-25-rootline-design.md` §26 (rows already added at planning time; fill the `ADR` column links)
-- Do not create, edit or renumber: `wiki/adr/0037-swarm-state-dir.md`, `wiki/adr/0038-ruff-scope-and-formatting.md`, `wiki/adr/0039-commit-trailers.md`, `wiki/adr/0040-swarm-plan-amendments-w1-t16.md`. The planner wrote 0037 … 0039 on 2026-11-26 (branch `docs/w1-plan-gaps`, PG-18 … PG-20) and 0040 on 2026-11-27 (branch `docs/w1-t16-decisions`, PG-21), so all four are on `develop` before stage W1-P1 starts. Their spec §26 rows already link them; leave those four rows unchanged. The next free ADR number after this task is **0041**.
+- Do not create, edit or renumber: `wiki/adr/0037-swarm-state-dir.md`, `wiki/adr/0038-ruff-scope-and-formatting.md`, `wiki/adr/0039-commit-trailers.md`, `wiki/adr/0040-swarm-plan-amendments-w1-t16.md`. The planner wrote 0037 … 0039 on 2026-11-26 (branch `docs/w1-plan-gaps`, PG-18 … PG-20) and 0040 on 2026-11-27 (branch `docs/w1-t16-decisions`, PG-21), so all four are on `develop` before stage W1-P1 starts. Their spec §26 rows already link them; leave those four rows unchanged. Also do not create, edit or renumber `wiki/adr/0041-w1-t02-version-gaps.md`: the planner wrote it on 2026-11-27 (branch `docs/w1-t02-gaps`, PG-22), it is on `develop` before this task's PR merges, and its spec §26 row already links it; leave that row unchanged. The next free ADR number after this task is **0042**.
 
 - [ ] **Step 1: Write each ADR from this table**
 
@@ -1214,7 +1288,7 @@ Every file uses the WIK-011 template. `Status: accepted`, `Date: <today>`. **Con
 
 - [ ] **Step 2: Update `wiki/index.md`, then run the lint**
 
-Run: `uv run python scripts/wiki_lint.py` → exit 0.
+Run: `uv run python scripts/wiki_lint.py` → no output and exit 0, both on `feat/w1-wiki` alone (the `wiki/versions.md` stub is on the stage base from the `docs/w1-t02-gaps` PR, PG-22) and on `integration/w1-p1` after both W1-P1 PRs are merged (gate check G11).
 Run: `uv run pytest tests/repo -v` → PASS.
 
 - [ ] **Step 3: Commit, push, open the combined PR for W1-T03 + W1-T04**
@@ -2675,8 +2749,10 @@ In `rootline`: commit `deploy/upstream/otel-demo/values.yaml`, `scripts/`, tests
 
 ### Task W1-T10: k3d cluster config and the ArgoCD app-of-apps
 
-**Requirement IDs:** INF-020, INF-021, INF-022 (helpers stub), INF-030, INF-031, ARC-010, ARC-002, GEN-012, SEC-011 (local CoreDNS), SEC-100 (bootstrap store), PG-9, PG-10.
+**Requirement IDs:** INF-020, INF-021, INF-022 (helpers stub), INF-030, INF-031, ARC-010, ARC-002, GEN-012, SEC-011 (local CoreDNS), SEC-100 (bootstrap store), PG-9, PG-10, PG-22.
 **Depends on:** W1-T02, W1-T09. **Branch:** `feat/w1-gitops-root`.
+
+> **Amended 2026-11-27, per PG-22 (overview §5; ADR 0041).** Step 5 row `ca-configmap.yaml`: the `copy-ca` Job image is `docker.io/rancher/kubectl` (no shell), so the Job runs `kubectl apply -k` over a projected volume, and the `cert-manager` Role on secret `rootline-local-ca` is dropped.
 
 **Files:**
 - Create: `infra/k3d/rootline.yaml`, `infra/k3d/manifests/traefik-config.yaml`
@@ -2904,7 +2980,7 @@ Templates (each gated by `.Values.global.env` where noted):
 | `ca.yaml` | (local, ci) `ClusterIssuer selfsigned` (`selfSigned: {}`); `Certificate rootline-local-ca` in `cert-manager` (`isCA: true`, `duration: 87600h`, `privateKey: {algorithm: ECDSA, size: 256}`, `secretName: rootline-local-ca`, `issuerRef: selfsigned`); `ClusterIssuer rootline-ca` (`ca.secretName: rootline-local-ca`); `Certificate rootline-wildcard` in `kube-system` for `*.{{ .Values.global.domain }}` and `{{ .Values.global.domain }}` from `rootline-ca`, secret `rootline-wildcard-tls` |
 | `gateway.yaml` | `Gateway rootline` in `kube-system` (local/ci; `traefik` ns on gke), `gatewayClassName: traefik`, listeners `http` (80, `allowedRoutes.namespaces.from: All`) and `https` (443, TLS terminate with `rootline-wildcard-tls`, `allowedRoutes.namespaces.from: All`) |
 | `coredns.yaml` | (local, ci) `ConfigMap coredns-custom` in `kube-system` with key `rootline.override`: `rewrite name auth.{{D}} traefik.kube-system.svc.cluster.local` and the same for `console.{{D}}` and `argocd.{{D}}` |
-| `ca-configmap.yaml` | `ConfigMap rootline-ca` in `rootline` and `keycloak` with key `ca.crt`. trust-manager is not installed, so a PostSync Job `copy-ca` (image `bitnami/kubectl`, pinned by digest in `versions.yaml` as `kubectl-image`) reads secret `cert-manager/rootline-local-ca` key `ca.crt` and applies the ConfigMap to both namespaces. RBAC: ServiceAccount `copy-ca` in `cert-manager`; Role in `cert-manager` with `get` on secret `rootline-local-ca`; Roles in `rootline` and `keycloak` with `get,create,patch` on configmaps (`resourceNames: [rootline-ca]` for `get,patch`; `create` cannot be restricted by name) |
+| `ca-configmap.yaml` | `ConfigMap rootline-ca` in `rootline` and `keycloak` with key `ca.crt`. trust-manager is not installed, so an ArgoCD PostSync Job `copy-ca` in `cert-manager` (annotations `argocd.argoproj.io/hook: PostSync`, `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation`; `backoffLimit: 6`, `activeDeadlineSeconds: 600`) writes the ConfigMap into both namespaces. Image: `versions.yaml` key `kubectl-image` as `<repo>:v<version>@<digest>`, which on 2026-11-27 is `docker.io/rancher/kubectl:v1.36.2@sha256:06c7a7a9772737494ae1e0c3af90f1b5385630c147e47c1c7cea92f4bed55fbe` (PG-22, ADR 0041; the image holds only `/bin/kubectl`, no shell, user `kubectl` UID 1000). Because there is no shell, the Job runs one `kubectl` command and gets the CA through a volume, not through the API: ConfigMap `copy-ca-kustomization` in `cert-manager` holds key `kustomization.yaml` with exactly `apiVersion: kustomize.config.k8s.io/v1beta1`, `kind: Kustomization`, `generatorOptions: {disableNameSuffixHash: true}`, `configMapGenerator: [{name: rootline-ca, namespace: rootline, files: [ca.crt]}, {name: rootline-ca, namespace: keycloak, files: [ca.crt]}]`; the pod mounts one `projected` volume `work` at `/work` (read-only) with sources configMap `copy-ca-kustomization` (item `kustomization.yaml`) and secret `rootline-local-ca` (item `ca.crt` → path `ca.crt`), plus an `emptyDir` volume `tmp` at `/tmp`. Container `copy-ca`: `command: ["/bin/kubectl", "apply", "-k", "/work"]`, env `HOME=/tmp` (kubectl's discovery cache), securityContext `runAsNonRoot: true`, `runAsUser: 1000`, `runAsGroup: 1000`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities: {drop: [ALL]}`, `seccompProfile: {type: RuntimeDefault}`; `restartPolicy: Never`. If secret `rootline-local-ca` does not exist yet, the kubelet keeps the pod in `ContainerCreating` and retries the mount until it appears or `activeDeadlineSeconds` ends the Job (the PostSync hook then fails and the next sync runs it again). RBAC: ServiceAccount `copy-ca` in `cert-manager` (no Role in `cert-manager`: the kubelet, not the ServiceAccount, reads the secret for the volume); Roles in `rootline` and `keycloak` with `get,create,patch` on configmaps (`resourceNames: [rootline-ca]` for `get,patch`; `create` cannot be restricted by name), each bound to ServiceAccount `cert-manager/copy-ca`. Verified on 2026-11-27: `kubectl kustomize` of this kustomization in `docker.io/rancher/kubectl:v1.36.2`, run as UID 1000 with a read-only root filesystem over a directory with the projected-volume symlink layout, prints the two ConfigMaps |
 | `eso-bootstrap.yaml` | (local, ci) ServiceAccount `eso-bootstrap-reader` in `rootline-secrets`; Role `get,list,watch` on secrets named `rootline-bootstrap`; `ClusterSecretStore bootstrap` (`provider.kubernetes.remoteNamespace: rootline-secrets`, `auth.serviceAccount: {name: eso-bootstrap-reader, namespace: rootline-secrets}`, `server.caProvider: {type: ConfigMap, name: kube-root-ca.crt, key: ca.crt, namespace: rootline-secrets}`) |
 | `eso-pg-roles.yaml` | ServiceAccount `eso-pg-reader` in `rootline-data`, Role `get,list,watch` on secrets with names `pg-rootline-migrator`, `pg-rootline-api`, `pg-rootline-agent`, `pg-rootline-faultlab`, `pg-rootline-console`, `pg-keycloak`; `ClusterSecretStore pg-roles` with `remoteNamespace: rootline-data` (PG-10) |
 | `generators.yaml` | `Password` generators (`generators.external-secrets.io/v1alpha1`): `password-48` (`length: 48, digits: 8, symbols: 0, noUpper: false, allowRepeat: true`) for passwords and webhook tokens; `password-43` (`length: 43, digits: 8, symbols: 0, allowRepeat: true`) for `job-token-key` and `bff-session-key`. Consumers derive the 32-byte AES key as `sha256(value)`; W4-T06 records this in `wiki/components/api.md` |
