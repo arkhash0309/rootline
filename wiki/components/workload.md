@@ -1,6 +1,6 @@
 # workload
 
-Status: render script and transforms implemented (W1-T09 steps 1 to 5, amended by ADR 0044). Step 6 (real render and findings) done 2026-11-27. The `rootline-env` commit and tag `baseline-v1` (step 7) are recorded in `wiki/log.md` when made.
+Status: render script and transforms implemented (W1-T09 steps 1 to 5, amended by ADR 0044). Step 6 (real render and findings) done 2026-11-27. Step 7 done 2026-11-27: `rootline-env` commit `1acc3501b1163ed2e21192a63810b8e7f9898089` (`feat: render workload from opentelemetry-demo 0.42.8`) on `main`, tag `baseline-v1` on that commit, both pushed to origin.
 
 ## Purpose
 
