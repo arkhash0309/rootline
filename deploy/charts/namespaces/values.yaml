@@ -1,0 +1,18 @@
+# One entry per namespace of ARC-010, plus cnpg-system and traefik (W1-T10 Step 4).
+# pss: Pod Security Standard level for `pod-security.kubernetes.io/enforce`.
+# defaultDeny: true renders the `default-deny` and `allow-dns` NetworkPolicies in that namespace.
+namespaces:
+  - {name: rootline, pss: restricted, defaultDeny: true}
+  - {name: rootline-data, pss: restricted, defaultDeny: true}
+  - {name: rootline-lab, pss: restricted, defaultDeny: true}
+  - {name: rootline-secrets, pss: restricted, defaultDeny: true}
+  - {name: keycloak, pss: restricted, defaultDeny: true}
+  - {name: observability, pss: baseline, defaultDeny: true}
+  - {name: shop, pss: baseline, defaultDeny: false}
+  - {name: argocd, pss: baseline, defaultDeny: false}
+  - {name: chaos-mesh, pss: privileged, defaultDeny: false}
+  - {name: kyverno, pss: baseline, defaultDeny: false}
+  - {name: external-secrets, pss: baseline, defaultDeny: false}
+  - {name: cert-manager, pss: baseline, defaultDeny: false}
+  - {name: cnpg-system, pss: baseline, defaultDeny: false}
+  - {name: traefik, pss: baseline, defaultDeny: false}

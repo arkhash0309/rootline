@@ -1,0 +1,29 @@
+# ESO Password generators (SEC-100). A generatorRef is resolved in the namespace of the ExternalSecret, so both
+# generators are rendered into every namespace listed in `generatorNamespaces` (values.yaml).
+# Consumers derive the 32-byte AES key as sha256(value) (recorded in wiki/components/api.md by W4-T06).
+# password-48: passwords and webhook tokens. password-43: job-token-key and bff-session-key.
+{{- range .Values.generatorNamespaces }}
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: password-48
+  namespace: {{ . }}
+spec:
+  length: 48
+  digits: 8
+  symbols: 0
+  noUpper: false
+  allowRepeat: true
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: password-43
+  namespace: {{ . }}
+spec:
+  length: 43
+  digits: 8
+  symbols: 0
+  allowRepeat: true
+{{- end }}

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: rootline-root
+description: ArgoCD app-of-apps for Rootline (INF-020). Templates are ArgoCD Application objects.
+version: 0.1.0
+type: application

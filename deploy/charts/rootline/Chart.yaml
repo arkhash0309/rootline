@@ -1,0 +1,5 @@
+apiVersion: v2
+name: rootline
+description: Umbrella chart for the Rootline services (INF-022). Empty in week 1; later tasks add one template directory per component.
+version: 0.1.0
+type: application

@@ -1,0 +1,30 @@
+# argo-cd chart values (W1-T10 Step 7; also used by `task up`, W1-T12). Requests sum to 640 Mi (ARC-030).
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 0
+configs:
+  params:
+    server.insecure: true
+  cm:
+    admin.enabled: true
+    accounts.rootline-gate: apiKey
+    accounts.rootline-faultlab: apiKey
+server:
+  resources:
+    requests:
+      memory: 160Mi
+repoServer:
+  resources:
+    requests:
+      memory: 192Mi
+controller:
+  resources:
+    requests:
+      memory: 224Mi
+redis:
+  resources:
+    requests:
+      memory: 64Mi

@@ -1,0 +1,31 @@
+global:
+  env: local                    # local | gke | ci (set by the root chart)
+  domain: 127.0.0.1.sslip.io
+  gcpProject: ""
+  k8sIssuer: https://kubernetes.default.svc.cluster.local
+  artifactsBucket: ""
+  ingressIP: ""
+
+image:
+  registry: rootline            # evaluated with `tpl` by rootline.image, so values-gke.yaml may use {{ .Values.global.gcpProject }}
+  tag: dev
+  pullPolicy: IfNotPresent
+
+# Memory requests and limits per component on `local` (ARC-030). The spec pins no CPU values; the CPU requests
+# required by the Kyverno policy `require-resources` (SEC-090) are added by W3-T12.
+resources:
+  console:       {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
+  api:           {requests: {memory: 192Mi}, limits: {memory: 384Mi}}
+  agent:         {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
+  gate:          {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+  opa:           {requests: {memory: 64Mi},  limits: {memory: 128Mi}}
+  faultlab:      {requests: {memory: 160Mi}, limits: {memory: 320Mi}}
+  mcp-telemetry: {requests: {memory: 256Mi}, limits: {memory: 512Mi}}
+  mcp-k8s:       {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+  mcp-gitops:    {requests: {memory: 128Mi}, limits: {memory: 256Mi}}
+
+security:
+  delegationMode: act           # SEC-040: act | azp
+
+llm:
+  clusterBudgetUsd: 6

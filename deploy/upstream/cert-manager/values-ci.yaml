@@ -1,0 +1,14 @@
+# cert-manager chart values (W1-T10 Step 7).
+crds:
+  enabled: true
+resources:
+  requests:
+    memory: 48Mi
+webhook:
+  resources:
+    requests:
+      memory: 40Mi
+cainjector:
+  resources:
+    requests:
+      memory: 40Mi

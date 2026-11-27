@@ -1,0 +1,52 @@
+{{- if has .Values.global.env (list "local" "ci") }}
+# SEC-100: ClusterSecretStore `bootstrap` reads Secret rootline-secrets/rootline-bootstrap (created by task secrets:local).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-bootstrap-reader
+  namespace: rootline-secrets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: eso-bootstrap-reader
+  namespace: rootline-secrets
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [rootline-bootstrap]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: eso-bootstrap-reader
+  namespace: rootline-secrets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: eso-bootstrap-reader
+subjects:
+  - kind: ServiceAccount
+    name: eso-bootstrap-reader
+    namespace: rootline-secrets
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: bootstrap
+spec:
+  provider:
+    kubernetes:
+      remoteNamespace: rootline-secrets
+      auth:
+        serviceAccount:
+          name: eso-bootstrap-reader
+          namespace: rootline-secrets
+      server:
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+          namespace: rootline-secrets
+{{- end }}

@@ -1,0 +1,108 @@
+{{- if has .Values.global.env (list "local" "ci") }}
+# ConfigMap rootline-ca (key ca.crt) in `rootline` and `keycloak` (SEC-011). trust-manager is not installed, so the
+# PostSync Job copy-ca creates it with one `kubectl apply -k /work` (PG-22, ADR 0041). The image has no shell.
+# GKE: the Let's Encrypt chain (INF-041) is delivered by W7; this Job needs the local CA secret, so it is local/ci only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: copy-ca-kustomization
+  namespace: cert-manager
+data:
+  kustomization.yaml: |
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    generatorOptions:
+      disableNameSuffixHash: true
+    configMapGenerator:
+      - name: rootline-ca
+        namespace: rootline
+        files: [ca.crt]
+      - name: rootline-ca
+        namespace: keycloak
+        files: [ca.crt]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: copy-ca
+  namespace: cert-manager
+{{- range list "rootline" "keycloak" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: copy-ca
+  namespace: {{ . }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [rootline-ca]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: copy-ca
+  namespace: {{ . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: copy-ca
+subjects:
+  - kind: ServiceAccount
+    name: copy-ca
+    namespace: cert-manager
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: copy-ca
+  namespace: cert-manager
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: copy-ca
+      containers:
+        - name: copy-ca
+          image: {{ .Values.copyCa.image }}
+          command: ["/bin/kubectl", "apply", "-k", "/work"]
+          env:
+            - {name: HOME, value: /tmp}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - {name: work, mountPath: /work, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: work
+          projected:
+            sources:
+              - configMap:
+                  name: copy-ca-kustomization
+                  items:
+                    - {key: kustomization.yaml, path: kustomization.yaml}
+              - secret:
+                  name: rootline-local-ca
+                  items:
+                    - {key: ca.crt, path: ca.crt}
+        - name: tmp
+          emptyDir: {}
+{{- end }}

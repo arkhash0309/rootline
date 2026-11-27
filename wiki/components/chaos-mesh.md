@@ -1,6 +1,6 @@
 # chaos-mesh
 
-Status: not implemented yet — planned in W1-T10.
+Status: installation configured in W1-T10 (`deploy/upstream/chaos-mesh/values-local.yaml`); not yet deployed to a cluster.
 
 ## Purpose
 
@@ -16,7 +16,18 @@ Chaos custom resources created by `faultlab` in namespace `rootline-lab`; the co
 
 ## Configuration
 
-Namespace `chaos-mesh` with Pod Security level `privileged` because chaos-daemon requires privileges (ARC-010). Memory request 256 Mi total, limit 640 Mi total (ARC-030).
+Namespace `chaos-mesh` with Pod Security level `privileged` because chaos-daemon requires privileges (ARC-010). Application `chaos-mesh` has `envs: [local]` in `deploy/root/values.yaml`, so it is not rendered for `gke` and `ci`; only `values-local.yaml` exists.
+
+| Value | Setting |
+|---|---|
+| `chaosDaemon.runtime` | `containerd` |
+| `chaosDaemon.socketPath` | `/run/k3s/containerd/containerd.sock` |
+| `dnsServer.create` | `true` |
+| `dashboard.create` | `false` |
+| `controllerManager.replicaCount` | `1` |
+| Memory requests | controller 128 Mi, daemon 96 Mi, dns 32 Mi (256 Mi total, ARC-030; limits are the chart defaults, none set) |
+
+ARC-030 budget: 256 Mi request, 640 Mi limit in total.
 
 ## Dependencies
 
@@ -36,4 +47,4 @@ Controller down: injected experiments do not start and the Fault Lab preflight c
 
 ## Last verified
 
-Not verified: no deployed component exists to verify. Page created 2026-11-27 in W1-T03 from the spec (base commit `f85bb63`).
+2026-11-27, 908e5ed (stage base): key paths checked against `helm show values chaos-mesh --version 2.8.8`; `tests/repo/test_root_chart.py` passes. Not verified in a cluster (unverified 2026-11-27).

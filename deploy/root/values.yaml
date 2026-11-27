@@ -1,0 +1,32 @@
+# Root chart values contract (INF-020). Later tasks flip `enabled: true` on their Application.
+env: local                      # local | gke | ci
+domain: 127.0.0.1.sslip.io
+targetRevision: develop
+repoURL: git@github.com:arkhash0309/rootline.git
+envRepoURL: git@github.com:arkhash0309/rootline-env.git
+envRepoRevision: main
+gcpProject: ""
+k8sIssuer: https://kubernetes.default.svc.cluster.local
+artifactsBucket: ""
+ingressIP: ""
+# Optional per-Application keys: `envs` limits it to the listed environments; `repo` and `chartVersion` override the
+# `repo` and `chart` of the versions.yaml row (used by prometheus-crds until scripts/render_versions.py copies the
+# `prometheus-operator-crds` row into deploy/root/files/versions.yaml; the test suite checks the equality).
+apps:
+  namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces}
+  gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api}
+  cert-manager:      {enabled: true,  wave: -3, kind: upstream, versionKey: cert-manager, chart: cert-manager, namespace: cert-manager}
+  external-secrets:  {enabled: true,  wave: -3, kind: upstream, versionKey: external-secrets, chart: external-secrets, namespace: external-secrets}
+  cnpg-operator:     {enabled: true,  wave: -3, kind: upstream, versionKey: cloudnative-pg, chart: cloudnative-pg, namespace: cnpg-system}
+  kyverno:           {enabled: true,  wave: -3, kind: upstream, versionKey: kyverno, chart: kyverno, namespace: kyverno}
+  chaos-mesh:        {enabled: true,  wave: -3, kind: upstream, versionKey: chaos-mesh, chart: chaos-mesh, namespace: chaos-mesh, envs: [local]}
+  prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability, repo: https://prometheus-community.github.io/helm-charts, chartVersion: "33.0.2"}
+  traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
+  platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
+  postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
+  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability}
+  keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak}
+  argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts}
+  rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline}
+  workload:          {enabled: true,  wave: 2,  kind: env-repo, path: workload}
+  demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, envs: [gke]}

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-config
+description: Cluster issuers and CA, ESO stores and generators, coredns-custom, Gateway and the rootline-ca ConfigMap (INF-020 wave -2).
+version: 0.1.0
+type: application

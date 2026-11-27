@@ -1,0 +1,14 @@
+{{- if has .Values.global.env (list "local" "ci") }}
+# SEC-011: in-cluster resolution of auth.D, console.D and argocd.D to the Traefik Service (k3s CoreDNS imports
+# /etc/coredns/custom/*.override).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  rootline.override: |
+    {{- range list "auth" "console" "argocd" }}
+    rewrite name {{ . }}.{{ $.Values.global.domain }} traefik.kube-system.svc.cluster.local
+    {{- end }}
+{{- end }}
