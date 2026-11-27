@@ -1,7 +1,8 @@
-"""Run a command only when a path exists (W1-T06): run_if_exists.py <path> -- <cmd...>.
+"""Run a command only when a path exists (GEN-060, W1-T06): run_if_exists.py <path> -- <cmd...>.
 
 Exit codes: 0 when the path is missing (prints `skip: <path> missing`) or the command exits 0;
-the command's own exit code otherwise; 2 on a usage error.
+the command's own exit code otherwise; 127 when the command is not on PATH (prints
+`<cmd> not on PATH` to stderr); 2 on a usage error.
 """
 
 from __future__ import annotations
@@ -22,7 +23,11 @@ def main(argv: list[str]) -> int:
     if not Path(path).exists():
         print(f"skip: {path} missing")
         return 0
-    return run(cmd, check=False, capture=False).returncode
+    try:
+        return run(cmd, check=False, capture=False).returncode
+    except FileNotFoundError:
+        print(f"{cmd[0]} not on PATH", file=sys.stderr)
+        return 127
 
 
 if __name__ == "__main__":

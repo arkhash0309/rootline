@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import sys
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -57,7 +56,7 @@ def current_week(status_text: str) -> int:
     return int(m.group(1)) if m else 1
 
 
-def env_key_checks(example: str, local: Mapping[str, str | None], week: int) -> list[Check]:
+def env_key_checks(example: str, local: dict[str, str | None], week: int) -> list[Check]:
     checks, key_week = [], 1
     for line in example.splitlines():
         if m := re.match(r"# week: (\d+)", line):
@@ -97,7 +96,7 @@ def tool_checks() -> list[Check]:
             out.append(Check(name, "FAIL", "not on PATH"))
             continue
         r = run(cmd, check=False)
-        m = re.search(rx, r.stdout + r.stderr)
+        m = re.search(rx, r.stdout)
         out.append(Check(name, "OK" if m else "WARN", m.group(1) if m else "version not parsed"))
     git = next(c for c in out if c.name == "git")
     if git.status == "OK" and tuple(int(x) for x in git.detail.split(".")[:2]) < (2, 45):
@@ -139,10 +138,15 @@ def cluster_memory_check() -> Check:
     )
 
 
-def wsl_checks(proc_version: str, repo: Path, env: Mapping[str, str]) -> list[Check]:
+def wsl_checks(proc_version: str, repo: Path, env: dict[str, str]) -> list[Check]:
     """GEN-040/041 (PG-17): run inside WSL 2, repo on the WSL filesystem, systemd Docker."""
-    in_wsl = "microsoft" in proc_version.lower() and bool(env.get("WSL_DISTRO_NAME"))
-    out = [Check("wsl", "OK" if in_wsl else "FAIL", env.get("WSL_DISTRO_NAME", "not running inside WSL"))]
+    out = [
+        Check(
+            "wsl",
+            "OK" if "microsoft" in proc_version.lower() and env.get("WSL_DISTRO_NAME") else "FAIL",
+            env.get("WSL_DISTRO_NAME", "not running inside WSL"),
+        )
+    ]
     on_windows_fs = str(repo).startswith("/mnt/")
     location = "WSL filesystem"
     if on_windows_fs:
@@ -156,9 +160,11 @@ def wsl_checks(proc_version: str, repo: Path, env: Mapping[str, str]) -> list[Ch
 def main() -> int:
     week = current_week((REPO / "wiki/status.md").read_text(encoding="utf-8"))
     local = dotenv_values(REPO / ".env.local") if (REPO / ".env.local").exists() else {}
-    checks = wsl_checks(Path("/proc/version").read_text(encoding="utf-8"), REPO, dict(os.environ))
-    checks += tool_checks()
-    checks.append(docker_memory_check())
+    checks = (
+        wsl_checks(Path("/proc/version").read_text(encoding="utf-8"), REPO, dict(os.environ))
+        + tool_checks()
+        + [docker_memory_check()]
+    )
     checks += env_key_checks((REPO / ".env.example").read_text(encoding="utf-8"), dict(local), week)
     checks.append(cluster_memory_check())
     for c in checks:
