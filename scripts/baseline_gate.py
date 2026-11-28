@@ -3,6 +3,11 @@
 Usage:
   uv run python scripts/baseline_gate.py [--minutes 30] [--context k3d-rootline] [--prometheus-url URL]
                                          [--poll-s 60] [--date YYYY-MM-DD] [--out-dir data/baseline/<date>]
+                                         [--skip-preconditions]
+
+`--skip-preconditions` skips step 1 below. It exists for the automated tests only (they have no cluster);
+never pass it in a real baseline run, because the gate result is meaningless when a flag is on or the
+load is not `normal`.
 
 What it does (WKL-004: all flags off, load level `normal`, 30 minutes):
 
@@ -25,8 +30,9 @@ What it does (WKL-004: all flags off, load level `normal`, 30 minutes):
    "kafka_consumer_lag:fraud-detection": [...]}}`, finite points only; input of
    `scripts/derive_thresholds.py --samples`) and `<out-dir>/report.json` (the table rows).
 
-Exit codes: 0 every row PASS; 1 at least one row FAIL; 2 precondition failed, Prometheus unreachable at the
-start or the end, or invalid arguments.
+Exit codes: 0 every row PASS; 1 at least one row FAIL; 2 precondition failed (including `kubectl` missing, a
+`kubectl` timeout, malformed `kubectl` output, and a failure to start the port-forward), Prometheus
+unreachable at the start or the end, or invalid arguments.
 """
 
 from __future__ import annotations
@@ -154,36 +160,67 @@ def _points(result: list[dict[str, Any]]) -> list[float]:
     return values
 
 
+def _kubectl_json(context: str, *args: str) -> tuple[Any, str | None]:
+    """Run `kubectl --context <context> -n shop get <args> -o json`.
+
+    Returns `(document, None)` or `(None, problem)`.
+
+    A missing `kubectl` binary, a timeout (`scripts.proc.run` default 600 s), a non-zero exit status and a
+    body that is not JSON each become a problem string instead of an exception.
+    """
+    what = f"{args[0]} shop/{args[1]}"
+    cmd = ["kubectl", "--context", context, "-n", "shop", "get", *args, "-o", "json"]
+    try:
+        proc = run(cmd, check=False)
+    except FileNotFoundError:
+        return None, "kubectl is not installed or not on PATH"
+    except subprocess.TimeoutExpired:
+        return None, f"kubectl timed out reading {what}"
+    except OSError as exc:
+        return None, f"cannot run kubectl: {exc}"
+    if proc.returncode != 0:
+        return None, f"cannot read {what}: {proc.stderr.strip()}"
+    try:
+        return json.loads(proc.stdout), None
+    except json.JSONDecodeError as exc:
+        return None, f"kubectl output for {what} is not JSON: {exc}"
+
+
 def check_preconditions(context: str) -> list[str]:
-    """Problems that make the run meaningless (empty list = the workload is at the WKL-004 state)."""
+    """Problems that make the run meaningless (empty list = the workload is at the WKL-004 state).
+
+    Every failure to obtain or interpret the cluster state (kubectl missing, timeout, non-zero exit, malformed
+    JSON, a ConfigMap without `data`, a container without `env`) is returned as a problem, never raised, so
+    that `main` exits 2 and not 1.
+    """
     problems: list[str] = []
-    cm = run(
-        ["kubectl", "--context", context, "-n", "shop", "get", "configmap", "flagd-config", "-o", "json"],
-        check=False,
-    )
-    if cm.returncode != 0:
-        problems.append(f"cannot read ConfigMap shop/flagd-config: {cm.stderr.strip()}")
+    cm, problem = _kubectl_json(context, "configmap", "flagd-config")
+    if problem is not None:
+        problems.append(problem)
     else:
-        for name, text in json.loads(cm.stdout)["data"].items():
-            flags = json.loads(text).get("flags", {}) if name.endswith(".json") else {}
-            on = sorted(k for k, v in flags.items() if v.get("defaultVariant") != "off")
-            if on:
-                problems.append(f"flags with defaultVariant other than off in {name}: {', '.join(on)}")
-    dep = run(
-        ["kubectl", "--context", context, "-n", "shop", "get", "deployment", "load-generator", "-o", "json"],
-        check=False,
-    )
-    if dep.returncode != 0:
-        problems.append(f"cannot read Deployment shop/load-generator: {dep.stderr.strip()}")
+        try:
+            for name, text in cm["data"].items():
+                flags = json.loads(text).get("flags", {}) if name.endswith(".json") else {}
+                on = sorted(k for k, v in flags.items() if v.get("defaultVariant") != "off")
+                if on:
+                    problems.append(f"flags with defaultVariant other than off in {name}: {', '.join(on)}")
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+            problems.append(f"ConfigMap shop/flagd-config is malformed: {type(exc).__name__}: {exc}")
+    dep, problem = _kubectl_json(context, "deployment", "load-generator")
+    if problem is not None:
+        problems.append(problem)
     else:
-        env = {
-            e["name"]: e.get("value")
-            for e in json.loads(dep.stdout)["spec"]["template"]["spec"]["containers"][0]["env"]
-        }
-        if env.get("LOCUST_USERS") != EXPECTED_LOCUST_USERS:
+        try:
+            env = {e["name"]: e.get("value") for e in dep["spec"]["template"]["spec"]["containers"][0]["env"]}
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
             problems.append(
-                f"LOCUST_USERS is {env.get('LOCUST_USERS')!r}, expected {EXPECTED_LOCUST_USERS!r}"
+                f"Deployment shop/load-generator has no readable container env: {type(exc).__name__}: {exc}"
             )
+        else:
+            if env.get("LOCUST_USERS") != EXPECTED_LOCUST_USERS:
+                problems.append(
+                    f"LOCUST_USERS is {env.get('LOCUST_USERS')!r}, expected {EXPECTED_LOCUST_USERS!r}"
+                )
     return problems
 
 
@@ -297,6 +334,9 @@ def main(argv: list[str] | None = None, *, sleep: Callable[[float], None] = time
         samples = collect_samples(prom, metric_map, start, end)
     except PromError as exc:
         print(f"baseline_gate: Prometheus unreachable at the end of the run: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:  # kubectl missing or not executable when the port-forward starts
+        print(f"baseline_gate: cannot start the Prometheus port-forward: {exc}", file=sys.stderr)
         return 2
     finally:
         if forward is not None:

@@ -112,3 +112,32 @@ def test_committed_thresholds_are_consistent() -> None:
     assert set(doc["ServiceHighLatency"]) == set(doc["baseline_p95"])
     assert set(doc["KafkaConsumerLagHigh"]) == {"fraud-detection"}
     assert doc["KafkaConsumerLagHigh"]["fraud-detection"] >= 1000.0
+
+
+def test_cli_exits_2_and_changes_nothing_when_an_output_cannot_be_written(tmp_path: Path) -> None:
+    """WKL-031: an OSError while writing exits 2; the first target is not left half written."""
+    samples = tmp_path / "samples.json"
+    samples.write_text(
+        json.dumps({"date": "2026-11-28", "samples": {"latency_p95:payment": [0.1] * 5}}), encoding="utf-8"
+    )
+    values = tmp_path / "values" / "alert-thresholds.yaml"
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, not a directory", encoding="utf-8")
+    chart = blocker / "alert-thresholds.yaml"  # parent is a file: mkdir raises OSError
+    code = derive_thresholds.main(
+        ["--samples", str(samples), "--out", str(values), "--chart-copy", str(chart)]
+    )
+    assert code == 2
+    assert not values.exists()
+    assert not list((tmp_path / "values").glob("*.tmp"))
+
+
+def test_cli_exits_2_on_malformed_samples(tmp_path: Path) -> None:
+    """WKL-031: a samples file without `samples` exits 2 and writes nothing."""
+    samples = tmp_path / "samples.json"
+    samples.write_text("{}", encoding="utf-8")
+    out = tmp_path / "out.yaml"
+    assert (
+        derive_thresholds.main(["--samples", str(samples), "--out", str(out), "--chart-copy", str(out)]) == 2
+    )
+    assert not out.exists()

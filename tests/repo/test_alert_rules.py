@@ -8,14 +8,15 @@ from typing import Any
 
 import pytest
 import yaml
-
-# `helm_dependencies` is an autouse module fixture that builds the chart dependencies once.
-from test_observability_values import helm_dependencies, of_kind, tmpl  # noqa: F401
+from conftest import of_kind, tmpl
 
 from scripts.baseline_gate import NOT_SERVER_SIDE, SERVER_SIDE_SERVICES
 from scripts.proc import run
 from scripts.promql import METRIC_KEYS, load_metric_map
 from scripts.workload_transforms import KEPT_COMPONENTS
+
+# `helm_dependencies` (tests/repo/conftest.py) builds the chart dependencies once per module.
+pytestmark = pytest.mark.usefixtures("helm_dependencies")
 
 REPO = Path(__file__).resolve().parents[2]
 CHART = REPO / "deploy/charts/observability"
