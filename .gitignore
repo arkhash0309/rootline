@@ -54,3 +54,5 @@ infra/terraform/**/terraform.tfvars
 .swarm/
 .hypothesis/
 coverage.xml
+# Generated k3d config (W1-T12, ADR 0046 T6)
+infra/k3d/rootline.generated.yaml

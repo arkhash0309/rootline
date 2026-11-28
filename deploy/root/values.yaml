@@ -11,9 +11,10 @@ artifactsBucket: ""
 ingressIP: ""
 # Optional per-Application key: `envs` limits it to the listed environments. Repository and chart version of an
 # `upstream` Application come only from its `versionKey` row in files/versions.yaml (GEN-050, ADR 0046 T1).
+# Every entry MUST have `namespace` (spec INF-020, ADR 0047 D1); apps.yaml has no default.
 apps:
-  namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces}
-  gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api}
+  namespaces:        {enabled: true,  wave: -4, kind: local-chart, path: deploy/charts/namespaces, namespace: argocd}
+  gateway-api-crds:  {enabled: true,  wave: -4, kind: url, versionKey: gateway-api, namespace: argocd}
   cert-manager:      {enabled: true,  wave: -3, kind: upstream, versionKey: cert-manager, chart: cert-manager, namespace: cert-manager}
   external-secrets:  {enabled: true,  wave: -3, kind: upstream, versionKey: external-secrets, chart: external-secrets, namespace: external-secrets}
   cnpg-operator:     {enabled: true,  wave: -3, kind: upstream, versionKey: cloudnative-pg, chart: cloudnative-pg, namespace: cnpg-system}
@@ -21,11 +22,11 @@ apps:
   chaos-mesh:        {enabled: true,  wave: -3, kind: upstream, versionKey: chaos-mesh, chart: chaos-mesh, namespace: chaos-mesh, envs: [local]}
   prometheus-crds:   {enabled: true,  wave: -3, kind: upstream, versionKey: prometheus-operator-crds, chart: prometheus-operator-crds, namespace: observability}
   traefik:           {enabled: true,  wave: -3, kind: upstream, versionKey: traefik, chart: traefik, namespace: traefik, envs: [gke]}
-  platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config}
-  postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres}
-  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability}
-  keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak}
-  argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts}
-  rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline}
-  workload:          {enabled: true,  wave: 2,  kind: env-repo, path: workload}
-  demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, envs: [gke]}
+  platform-config:   {enabled: true,  wave: -2, kind: local-chart, path: deploy/charts/platform-config, namespace: argocd}
+  postgres:          {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/postgres, namespace: rootline-data}
+  observability:     {enabled: true,  wave: -1, kind: local-chart, path: deploy/charts/observability, namespace: observability}
+  keycloak:          {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/keycloak, namespace: keycloak}
+  argocd-accounts:   {enabled: false, wave: 0,  kind: local-chart, path: deploy/charts/argocd-accounts, namespace: argocd}
+  rootline:          {enabled: true,  wave: 1,  kind: local-chart, path: deploy/charts/rootline, namespace: rootline}
+  workload:          {enabled: true,  wave: 2,  kind: env-repo, path: workload, namespace: shop}
+  demo-seed:         {enabled: false, wave: 2,  kind: local-chart, path: deploy/charts/demo-seed, namespace: rootline, envs: [gke]}
