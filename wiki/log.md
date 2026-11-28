@@ -18,3 +18,6 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Planner recorded ADR 0047 / PG-28: W1-T12 bring-up decisions (explicit Application namespaces, sync retry, root ignores child finalizers, node DNS search list stripped by task up) (docs/w1-t12-bringup-decisions)
 - [agent] Recorded W1-T09 step 6 real-render findings (22 files; astronomy-db, valkey-cart, kafka are Deployments; LOCUST_USERS container index 0) in wiki/components/workload.md
 - [agent] rootline-env commit 1acc350 (1acc3501b1163ed2e21192a63810b8e7f9898089) renders workload from opentelemetry-demo 0.42.8; tag baseline-v1 on it; pushed to origin main (W1-T09 step 7, made by the coordinator)
+
+## 2026-11-28
+- [agent] Planner recorded ADR 0048 / PG-29: Deployment kafka never Ready because the KRaft voter 1@kafka:9093 goes through Service kafka; WKL-010 step 7 sets KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093, re-render as rootline-env tag baseline-v2, baseline-v1 unchanged (docs/w1-kafka-readiness-decision)

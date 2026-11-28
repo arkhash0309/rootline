@@ -50,6 +50,7 @@ WIK-001: `wiki/` is the persistent working memory for the AI coding agents that 
 - [adr/0045-w1-t14-ci-decisions.md](adr/0045-w1-t14-ci-decisions.md) — ADR 0045 — CI workflow and ruleset decisions from the W1-T14 review (spec-gap)
 - [adr/0046-w1-t10-t11-review-decisions.md](adr/0046-w1-t10-t11-review-decisions.md) — ADR 0046 — GitOps root and observability decisions from the W1-T10 and W1-T11 reviews (spec-gap)
 - [adr/0047-w1-t12-bringup-decisions.md](adr/0047-w1-t12-bringup-decisions.md) — ADR 0047 — Bring-up decisions from W1-T12: Application namespaces, sync retry, root diff and node DNS (spec-gap)
+- [adr/0048-kafka-kraft-voter-localhost.md](adr/0048-kafka-kraft-voter-localhost.md) — ADR 0048 — Kafka KRaft controller quorum voter on `localhost` in the workload render (spec-gap)
 - [architecture.md](architecture.md) — Living architecture: context diagram and component table with links to the spec.
 - [components/agent.md](components/agent.md) — Component page for `agent` (WIK-010).
 - [components/api.md](components/api.md) — Component page for `api` (WIK-010).
