@@ -12,7 +12,7 @@ from conftest import of_kind, tmpl
 
 from scripts.baseline_gate import NOT_SERVER_SIDE, SERVER_SIDE_SERVICES
 from scripts.proc import run
-from scripts.promql import METRIC_KEYS, load_metric_map
+from scripts.promql import METRIC_KEYS, load_metric_map, render
 from scripts.workload_transforms import KEPT_COMPONENTS
 
 # `helm_dependencies` (tests/repo/conftest.py) builds the chart dependencies once per module.
@@ -147,8 +147,22 @@ def test_wkl_031_expressions() -> None:
     lag = named("KafkaConsumerLagHigh")
     assert [r["labels"]["service"] for r in lag] == ["fraud-detection"]
     assert 'kafka_consumer_records_lag{service_name="fraud-detection"' in lag[0]["expr"]
-    for r in named("HighCPU"):
-        assert 'resource="cpu"' in r["expr"] and r["expr"].endswith("> 0.9")
+    cpu_rules = named("HighCPU")
+    assert [r["labels"]["service"] for r in cpu_rules] == list(KEPT_COMPONENTS)
+    cpu_template = load_metric_map()["cpu_usage"]["promql"]
+    for r in cpu_rules:
+        svc = r["labels"]["service"]
+        # ADR 0049 D9: absolute threshold of 1.5 cores, no CPU limit series.
+        assert r["expr"] == "(" + render(cpu_template, svc) + ") > 1.5", svc
+        assert "kube_pod_container_resource_limits" not in r["expr"], svc
+        assert r["for"] == "2m" and r["labels"]["severity"] == "warning", svc
+        assert r["labels"] == {
+            "rootline": "true",
+            "namespace": "shop",
+            "service": svc,
+            "severity": "warning",
+        }, svc
+        assert r["annotations"]["summary"] == f"Workload {svc}: CPU usage above 1.5 cores for 2 minutes", svc
     for r in named("HighMemory"):
         assert 'resource="memory"' in r["expr"] and r["expr"].endswith("> 0.9")
 

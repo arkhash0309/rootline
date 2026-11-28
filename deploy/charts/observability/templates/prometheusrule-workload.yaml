@@ -123,9 +123,8 @@ spec:
             summary: {{ printf "Service %s: Kafka consumer lag above %v records (max of 1000 and 10 times the baseline)" $lagSvc $lagLimit | quote }}
         {{- range $svc := $alerts.workloads }}
         {{- $cpu := $map.cpu_usage.promql | replace "$svc" $svc | replace "$wl" $svc }}
-        {{- $cpuLimit := printf `sum(kube_pod_container_resource_limits{namespace="shop",resource="cpu",pod=~"%s-[a-z0-9]+-[a-z0-9]+"})` $svc }}
         - alert: HighCPU
-          expr: {{ printf "(%s) / (%s) > 0.9" $cpu $cpuLimit | quote }}
+          expr: {{ printf "(%s) > 1.5" $cpu | quote }}
           for: 2m
           labels:
             rootline: "true"
@@ -133,7 +132,7 @@ spec:
             service: {{ $svc }}
             severity: warning
           annotations:
-            summary: {{ printf "Workload %s: CPU usage above 90 %% of its CPU limit" $svc | quote }}
+            summary: {{ printf "Workload %s: CPU usage above 1.5 cores for 2 minutes" $svc | quote }}
         {{- end }}
         {{- range $svc := $alerts.workloads }}
         {{- $mem := $map.memory_working_set.promql | replace "$svc" $svc | replace "$wl" $svc }}
