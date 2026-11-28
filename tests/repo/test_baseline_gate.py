@@ -221,6 +221,7 @@ class ScriptedClient:
     restarts: float | None = 0.0
     fail_polls = False
     fail_always = False
+    fail_final_scalar = False
     calls = 0
     clock = Clock()
 
@@ -239,6 +240,9 @@ class ScriptedClient:
         return [{"metric": {}, "values": [[start, "0.1"]]}]
 
     def scalar(self, expr: str, ts: float | None = None) -> float | None:
+        if type(self).fail_final_scalar and ts is not None:
+            # only the final evaluation passes an evaluation time; the progress lines do not
+            raise PromError("down at the end of the run")
         if expr.startswith("sum(increase("):
             return type(self).restarts
         return type(self).error_ratio
@@ -250,6 +254,7 @@ def scripted(monkeypatch: pytest.MonkeyPatch) -> type[ScriptedClient]:
     ScriptedClient.restarts = 0.0
     ScriptedClient.fail_polls = False
     ScriptedClient.fail_always = False
+    ScriptedClient.fail_final_scalar = False
     ScriptedClient.calls = 0
     clock = ScriptedClient.clock = Clock()
     monkeypatch.setattr(baseline_gate, "PromClient", ScriptedClient)
@@ -303,6 +308,16 @@ def test_main_prometheus_unreachable_exits_2(scripted: type[ScriptedClient], tmp
     """WKL-004: Prometheus unreachable at the start exits 2."""
     scripted.fail_always = True
     assert _gate(tmp_path) == 2
+
+
+def test_main_prometheus_unreachable_at_the_end_exits_2(
+    scripted: type[ScriptedClient], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """WKL-004: Prometheus unreachable during the final evaluation exits 2 and writes no report.json."""
+    scripted.fail_final_scalar = True
+    assert _gate(tmp_path) == 2
+    assert "Prometheus unreachable at the end of the run" in capsys.readouterr().err
+    assert not (tmp_path / "report.json").exists()
 
 
 def test_main_rejects_non_positive_arguments(tmp_path: Path) -> None:

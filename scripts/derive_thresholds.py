@@ -26,8 +26,9 @@ Outputs: the values file and a byte-identical copy in the chart `files/` directo
 Exit codes: 0 both files written; 2 unreadable or malformed samples file, an unknown sample key (nothing
 written), or an `OSError` while writing an output (for example a target directory that is a file or is not
 writable). The text is rendered once, both outputs are first written to `<target>.tmp` and only then renamed over
-the targets, so a write failure leaves both targets unchanged; the message `derive_thresholds: cannot write the
-outputs: <error>` goes to stderr.
+the targets: a failure while writing the temporary files leaves both targets unchanged; a rename failure after
+that can leave the first target updated, and the run exits 2 and must be repeated. The message
+`derive_thresholds: cannot write the outputs: <error>` goes to stderr.
 """  # noqa: E501 - markdown tables in the module docstring
 
 from __future__ import annotations
@@ -103,10 +104,10 @@ def render_yaml(thresholds: dict[str, dict[str, float]], date: str) -> str:
 def _write_both(text: str, targets: list[Path]) -> None:
     """Write `text` to every target; the targets change only after every temporary file was written.
 
-    Step 1 writes `<target>.tmp` next to each target (creating parent directories); a failure there leaves
-    every target unchanged and removes the temporary files. Step 2 renames each temporary file over its target
-    with `Path.replace`; a failure in step 2 (a rename error after step 1 succeeded) can leave the first
-    target updated and the second not, which the caller reports as exit 2 so the run is repeated.
+    Step 1 writes `<target>.tmp` next to each target (creating parent directories); a failure while writing
+    the temporary files leaves both targets unchanged and removes the temporary files. Step 2 renames each
+    temporary file over its target with `Path.replace`; a rename failure after that can leave the first target
+    updated, and the run exits 2 and must be repeated.
     """
     temps: list[tuple[Path, Path]] = []
     try:
