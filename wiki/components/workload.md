@@ -83,6 +83,8 @@ Cross-check with an independent query at the end of the run (`sum by (service)(i
 
 Samples: `data/baseline/2026-11-28/samples.json` (git-ignored directory) holds 115 to 116 points per `latency_p95:<svc>` series for the 12 services with server spans, 0 points for `fraud-detection` and 121 points for `kafka_consumer_lag:fraud-detection` (maximum `0.0`). `scripts/derive_thresholds.py --samples` wrote `deploy/values/alert-thresholds.yaml` and its byte-identical chart copy `deploy/charts/observability/files/alert-thresholds.yaml`. The baseline p95 values (seconds) are `ad` 0.0037, `cart` 0.0025, `checkout` 0.0624, `currency` 0.0019, `email` 0.0272, `fraud-detection` 0.0, `frontend` 0.0419, `image-provider` 0.0019, `payment` 0.0071, `product-catalog` 0.0259, `quote` 0.0019, `recommendation` 0.0133, `shipping` 0.0077. Every `ServiceHighLatency` threshold is the `1.0` s floor (the largest `3 x p95` is `0.1872` s for `checkout`), and `KafkaConsumerLagHigh` is the `1000.0` records floor.
 
+High-load check of `load-generator` (ADR 0049 D9 verification obligation 1, W1-T13 fix round 2): `kubectl --context k3d-rootline -n shop set env deployment/load-generator LOCUST_USERS=20` at 2026-11-28T17:32:24Z (rollout finished 17:32:35Z), kept for 10 min, queried at 17:43:21Z. Highest `cpu_usage` of `load-generator` held for 2 min inside 17:33:21Z to 17:43:21Z: `1.0343` cores (highest raw 1 m value `1.3727` cores); the highest value of any other `shop` pod is `product-catalog` `0.1766`. `1.0343` is below the `HighCPU` threshold `1.5` (telemetry.md F9), so the threshold stays and no `HighCPU` rule fired. `LOCUST_USERS` was set back to `10` at 17:43:25Z; `rollout status deployment/load-generator` exited `0` at 17:43:36Z and the Deployment env reads `LOCUST_USERS=10`. The Application `workload` stayed `Synced` (the `LOCUST_USERS` value is an `ignoreDifferences` pointer of the Application, finding (c)).
+
 Re-running: the gate is read-only against the cluster (kubectl `get` and a Prometheus port-forward). Exit code `1` means at least one row failed; the table names the service. Exit code `2` means a precondition failed (a flag is on, or `LOCUST_USERS` is not `10`) or Prometheus was unreachable.
 
 ## Dependencies
@@ -103,4 +105,4 @@ Baseline gate (WKL-004) fails (it passed on 2026-11-28, section "Baseline health
 
 ## Last verified
 
-2026-11-28, 77560ca (W1-T13 on branch `feat/w1-baseline-gate`; baseline health gate run against the live `baseline-v2` workload on k3d; transforms verified earlier by unit tests and two real renders of chart 0.42.8).
+2026-11-28, 9c6cc4b (W1-T13 on branch `feat/w1-baseline-gate`; baseline health gate run against the live `baseline-v2` workload on k3d; transforms verified earlier by unit tests and two real renders of chart 0.42.8).
