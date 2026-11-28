@@ -16,3 +16,4 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Planner recorded ADR 0045 / PG-26: W1-T14 CI and ruleset decisions (docs/w1-t14-ci-decisions)
 - [agent] Planner recorded ADR 0046 / PG-27: W1-T10 and W1-T11 review decisions; observability PSS privileged awaits owner confirmation (docs/w1-t10-t11-review-decisions)
 - [agent] Added task up, secrets:local, trust-ca, build_images and wait_apps scripts; first local k3d bring-up on 2026-11-27 verified pgvector 0.8.6, collector log permissions, Prometheus pod labels, Gateway acceptance and the memory total (3.684 GiB); recorded root-chart defects D1 to D4 and DNS problem E1 in wiki/components/argocd.md; Step 7 (trust-ca, browser) not run (W1-T12, branch feat/w1-task-up)
+- 2026-11-28 [agent] W1-T12 Step 5 and Step 8 re-check after task up exit 0 (smoke: 15 PASS)
