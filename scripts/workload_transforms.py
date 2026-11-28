@@ -1,4 +1,4 @@
-"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12, PG-25)."""
+"""Pure transforms for rendered OTel Demo manifests (WKL-010, PG-11, PG-12, PG-25, PG-29)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from typing import Any
 import yaml
 
 COLLECTOR_FQDN = "otel-collector.observability.svc.cluster.local"
+# WKL-010 step 7, PG-29 (ADR 0048 D1): the single KRaft voter is the kafka pod itself, not Service kafka.
+KAFKA_QUORUM_VOTERS = "1@localhost:9093"
 KEPT_COMPONENTS = [
     "frontend",
     "frontend-proxy",
@@ -215,6 +217,8 @@ def transform(docs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                     ("LOCUST_AUTOSTART", "true"),
                 ):
                     _set_env(spec["containers"][0], name, value)
+            if comp == "kafka":
+                _set_env(spec["containers"][0], "KAFKA_CONTROLLER_QUORUM_VOTERS", KAFKA_QUORUM_VOTERS)
             for kind, name, optional in pod_references(spec):
                 referrers.setdefault((kind, name), set()).add((comp, obj["kind"], obj["metadata"]["name"]))
                 if not optional:

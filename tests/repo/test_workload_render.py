@@ -1,4 +1,4 @@
-"""Verifies WKL-010, WKL-011 (TST-WKL-001), PG-11, PG-12, PG-25."""
+"""Verifies WKL-010, WKL-011 (TST-WKL-001), PG-11, PG-12, PG-25, PG-29."""
 
 import copy
 import json
@@ -88,6 +88,39 @@ def test_load_generator_env() -> None:
 def test_networkpolicies_file() -> None:
     names = [o["metadata"]["name"] for o in transform(docs())["networkpolicies"]]
     assert names == ["allow-observability-scrape", "allow-same-namespace"]
+
+
+def test_kafka_controller_quorum_voter_is_localhost() -> None:
+    """WKL-010 step 7, PG-29 (ADR 0048): the KRaft voter is the kafka pod itself, not Service kafka."""
+    out = transform(docs())
+    assert [o["kind"] for o in out["kafka"]] == ["Service", "Deployment"]
+    dep = next(o for o in out["kafka"] if o["kind"] == "Deployment")
+    container = dep["spec"]["template"]["spec"]["containers"][0]
+    names = [e["name"] for e in container["env"]]
+    env = {e["name"]: e.get("value") for e in container["env"]}
+    assert names.count("KAFKA_CONTROLLER_QUORUM_VOTERS") == 1
+    assert env["KAFKA_CONTROLLER_QUORUM_VOTERS"] == "1@localhost:9093"
+    assert env["KAFKA_LISTENERS"] == "PLAINTEXT://:9092,CONTROLLER://:9093"
+    assert env["KAFKA_ADVERTISED_LISTENERS"] == "PLAINTEXT://kafka:9092"
+    assert container["readinessProbe"] == {
+        "tcpSocket": {"port": 9092},
+        "initialDelaySeconds": 5,
+        "periodSeconds": 10,
+        "failureThreshold": 3,
+    }
+    svc = next(o for o in out["kafka"] if o["kind"] == "Service")
+    assert "publishNotReadyAddresses" not in svc["spec"]
+
+
+def test_kafka_controller_quorum_voter_added_when_absent() -> None:
+    """WKL-010 step 7, PG-29 (ADR 0048): a chart output without the variable gets it appended."""
+    ds = docs()
+    dep = next(d for d in ds if d["kind"] == "Deployment" and d["metadata"]["name"] == "kafka")
+    container = dep["spec"]["template"]["spec"]["containers"][0]
+    container["env"] = [e for e in container["env"] if e["name"] != "KAFKA_CONTROLLER_QUORUM_VOTERS"]
+    out = next(o for o in transform(ds)["kafka"] if o["kind"] == "Deployment")
+    env = out["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert env[-1] == {"name": "KAFKA_CONTROLLER_QUORUM_VOTERS", "value": "1@localhost:9093"}
 
 
 def where(out: dict[str, list[dict[str, Any]]]) -> dict[tuple[str, str], str]:
@@ -270,13 +303,14 @@ def test_render_workload_writes_files_and_baseline(tmp_path: Path, monkeypatch: 
         "configmaps.yaml",
         "flagd-config.yaml",
         "flagd.yaml",
+        "kafka.yaml",
         "load-generator.yaml",
         "networkpolicies.yaml",
         "payment.yaml",
         "serviceaccount.yaml",
     ]
     baseline = json.loads((out.parent / ".rootline/baseline.json").read_text(encoding="utf-8"))
-    assert baseline == {"baseline_tag": "baseline-v1", "rendered_from": "0.42.8"}
+    assert baseline == {"baseline_tag": "baseline-v2", "rendered_from": "0.42.8"}
     template_call = next(c for c in calls if c[:2] == ["helm", "template"])
     assert "0.42.8" in template_call
     assert template_call[-1].endswith("deploy/upstream/otel-demo/values.yaml")
