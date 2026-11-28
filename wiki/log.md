@@ -15,3 +15,5 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 - [agent] Added ci.yml, scripts/ci_changed_files.py, ruleset JSON files and the Rulesets runbook section (W1-T14; ruleset creation O-3 and the first CI run are deferred)
 - [agent] Planner recorded ADR 0045 / PG-26: W1-T14 CI and ruleset decisions (docs/w1-t14-ci-decisions)
 - [agent] Planner recorded ADR 0046 / PG-27: W1-T10 and W1-T11 review decisions; observability PSS privileged awaits owner confirmation (docs/w1-t10-t11-review-decisions)
+- [agent] Recorded W1-T09 step 6 real-render findings (22 files; astronomy-db, valkey-cart, kafka are Deployments; LOCUST_USERS container index 0) in wiki/components/workload.md
+- [agent] rootline-env commit 1acc350 (1acc3501b1163ed2e21192a63810b8e7f9898089) renders workload from opentelemetry-demo 0.42.8; tag baseline-v1 on it; pushed to origin main (W1-T09 step 7, made by the coordinator)
