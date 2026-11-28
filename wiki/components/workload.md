@@ -103,4 +103,4 @@ Baseline gate (WKL-004) fails (it passed on 2026-11-28, section "Baseline health
 
 ## Last verified
 
-2026-11-28, W1-T13 on branch `feat/w1-baseline-gate` (baseline health gate run against the live `baseline-v2` workload on k3d; transforms verified earlier by unit tests and two real renders of chart 0.42.8).
+2026-11-28, 77560ca (W1-T13 on branch `feat/w1-baseline-gate`; baseline health gate run against the live `baseline-v2` workload on k3d; transforms verified earlier by unit tests and two real renders of chart 0.42.8).
