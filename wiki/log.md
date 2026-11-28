@@ -21,3 +21,4 @@ Append-only (WIK-013). Format: `- [agent|owner] <what happened> (PR #n / commit 
 
 ## 2026-11-28
 - [agent] Planner recorded ADR 0048 / PG-29: Deployment kafka never Ready because the KRaft voter 1@kafka:9093 goes through Service kafka; WKL-010 step 7 sets KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093, re-render as rootline-env tag baseline-v2, baseline-v1 unchanged (docs/w1-kafka-readiness-decision)
+- [agent] Added the kafka KRaft voter rule (KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093) and BASELINE_TAG baseline-v2 to the workload render (ADR 0048, PG-29); rootline-env re-render pending

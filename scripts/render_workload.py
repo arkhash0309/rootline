@@ -19,6 +19,9 @@ from scripts.proc import run
 from scripts.versions_lib import REPO, load_versions
 from scripts.workload_transforms import UnresolvedReferenceError, dump, transform
 
+# WKL-001, GEN-011, PG-29 (ADR 0048 D3): the rootline-env tag of this render; +1 on every re-render.
+BASELINE_TAG = "baseline-v2"
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -54,7 +57,7 @@ def main() -> int:
     meta = args.out.parent / ".rootline/baseline.json"
     meta.parent.mkdir(exist_ok=True)
     meta.write_text(
-        json.dumps({"baseline_tag": "baseline-v1", "rendered_from": demo["chart"]}, sort_keys=True) + "\n",
+        json.dumps({"baseline_tag": BASELINE_TAG, "rendered_from": demo["chart"]}, sort_keys=True) + "\n",
         encoding="utf-8",
         newline="\n",
     )
