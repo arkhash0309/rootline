@@ -1,5 +1,5 @@
 # Status
-Last updated: 2026-11-28 (W1-T13 fix round 1 on `feat/w1-baseline-gate`, base 77560ca)
+Last updated: 2026-11-28 (planner decision ADR 0049 D9 on `feat/w1-baseline-gate`, base 83074d3)
 ## Current milestone: Week 1 — Foundations
 ## Done
 - W1-T12 `task up` bring-up merged (PR #30; ADRs 0047, 0048 with the kafka voter fix and `baseline-v2`)
@@ -10,7 +10,7 @@ Last updated: 2026-11-28 (W1-T13 fix round 1 on `feat/w1-baseline-gate`, base 77
 - Swarm and integration tooling (W1-T16, commit 99002de, PG-16)
 - `rootline-env` repository created with README commit 35d4916 (W1-T08, GEN-010, GEN-011, GEN-024)
 ## In progress
-- W1-T13 baseline gate, metric map, thresholds and alert rules (branch `feat/w1-baseline-gate`; WKL-004, WKL-022, WKL-030 to WKL-032) — agent — review fix round 1 done; next: reviewer re-review, then planner confirms ADR 0049 and decides the open `HighCPU` defect (no CPU limit on any `shop` container)
+- W1-T13 baseline gate, metric map, thresholds and alert rules (branch `feat/w1-baseline-gate`; WKL-004, WKL-022, WKL-030 to WKL-032) — agent — review fix round 1 done; planner confirmed ADR 0049 D1 to D8 and decided the `HighCPU` defect as D9 (`cpu_usage > 1.5` cores for `2m`, no CPU limits); next: fix round 2 applies D9 to `prometheusrule-workload.yaml` and `tests/repo/test_alert_rules.py` and runs the `LOCUST_USERS=20` check, then reviewer re-review
 ## Next
 - Review and merge of W1-T13, then Week 1 acceptance and release (W1-T15)
 ## Blockers
