@@ -1,6 +1,6 @@
 # workload
 
-Status: render script and transforms implemented (W1-T09 steps 1 to 5, amended by ADR 0044). Step 6 (real render and findings) done 2026-11-27. Step 7 done 2026-11-27: `rootline-env` commit `1acc3501b1163ed2e21192a63810b8e7f9898089` (`feat: render workload from opentelemetry-demo 0.42.8`) on `main`, tag `baseline-v1` on that commit, both pushed to origin.
+Status: baseline gate passed 2026-11-28 (W1-T13). Render script and transforms implemented (W1-T09 steps 1 to 5, amended by ADR 0044). Step 6 (real render and findings) done 2026-11-27. Step 7 done 2026-11-27: `rootline-env` commit `1acc3501b1163ed2e21192a63810b8e7f9898089` (`feat: render workload from opentelemetry-demo 0.42.8`) on `main`, tag `baseline-v1` on that commit, both pushed to origin.
 
 ## Purpose
 
@@ -59,6 +59,32 @@ Verified 2026-11-27 (W1-T09 step 6): `uv run python scripts/render_workload.py -
 
 Because `fraud-detection` has no port, the readiness probe transform (WKL-010 step 4) adds none to it.
 
+## Baseline health gate
+
+Verified 2026-11-28 (W1-T13 Step 5, WKL-004): `uv run python scripts/baseline_gate.py --minutes 30 --date 2026-11-28` ran from 2026-11-28T16:29:56Z to 16:59:56Z (UTC) against the `baseline-v2` workload (`rootline-env` `b1bd88d`; all 19 Deployments `Running`, Application `workload` `Synced`/`Healthy`), exit code `0`, 0 failed polls. Preconditions checked by the script before the start: every flag in `ConfigMap/shop/flagd-config` has `defaultVariant: "off"` and `Deployment/shop/load-generator` has `LOCUST_USERS=10` (load level `normal`, WKL-040). The first and only run passed, so no dependency was re-enabled, no load-generator task was disabled, and no re-render happened (`BASELINE_TAG` stays `baseline-v2`; `baseline-v3` is not used).
+
+| service | error_ratio (mean over 30 min) | restarts (30 min) | result |
+|---|---|---|---|
+| `frontend` | 0.000000 | 0.00 | PASS |
+| `ad` | 0.000000 | 0.00 | PASS |
+| `cart` | 0.000000 | 0.00 | PASS |
+| `checkout` | 0.000000 | 0.00 | PASS |
+| `currency` | 0.000000 | 0.00 | PASS |
+| `email` | 0.000000 | 0.00 | PASS |
+| `payment` | 0.000000 | 0.00 | PASS |
+| `product-catalog` | 0.000000 | 0.00 | PASS |
+| `quote` | 0.000000 | 0.00 | PASS |
+| `recommendation` | 0.000000 | 0.00 | PASS |
+| `shipping` | 0.000000 | 0.00 | PASS |
+| `fraud-detection` | 0.000000 (no server spans, telemetry.md F4) | 0.00 | PASS |
+| `image-provider` | 0.000000 | 0.00 | PASS |
+
+Cross-check with an independent query at the end of the run (`sum by (service)(increase(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[30m]))`): only `flagd` (9.09 errors in 30 min against 20667 server spans) and `frontend-proxy` (1.04 against 30947) have error series; both are outside the 13 gate services (WKL-004 excludes them). The gate input is the metric-map `error_ratio` (telemetry.md F7), the pod selector is `<svc>-[a-z0-9]+-[a-z0-9]+` (telemetry.md F6).
+
+Samples: `data/baseline/2026-11-28/samples.json` (git-ignored directory) holds 115 to 116 points per `latency_p95:<svc>` series for the 12 services with server spans, 0 points for `fraud-detection` and 121 points for `kafka_consumer_lag:fraud-detection` (maximum `0.0`). `scripts/derive_thresholds.py --samples` wrote `deploy/values/alert-thresholds.yaml` and its byte-identical chart copy `deploy/charts/observability/files/alert-thresholds.yaml`. The baseline p95 values (seconds) are `ad` 0.0037, `cart` 0.0025, `checkout` 0.0624, `currency` 0.0019, `email` 0.0272, `fraud-detection` 0.0, `frontend` 0.0419, `image-provider` 0.0019, `payment` 0.0071, `product-catalog` 0.0259, `quote` 0.0019, `recommendation` 0.0133, `shipping` 0.0077. Every `ServiceHighLatency` threshold is the `1.0` s floor (the largest `3 x p95` is `0.1872` s for `checkout`), and `KafkaConsumerLagHigh` is the `1000.0` records floor.
+
+Re-running: the gate is read-only against the cluster (kubectl `get` and a Prometheus port-forward). Exit code `1` means at least one row failed; the table names the service. Exit code `2` means a precondition failed (a flag is on, or `LOCUST_USERS` is not `10`) or Prometheus was unreachable.
+
 ## Dependencies
 
 Platform collector and backends in `observability` (WKL-020), `rootline-env` repository.
@@ -69,7 +95,7 @@ Stateful components `astronomy-db`, `valkey-cart`, `kafka` (ARC-001).
 
 ## Failure modes and handling
 
-Baseline gate (WKL-004) fails: re-enable the missing dependency or disable the load-generator task and record which here. Flag reload fallback (ADR 0033): the flag injector deletes the flagd pod if flagd does not serve the new variant within 120 s.
+Baseline gate (WKL-004) fails (it passed on 2026-11-28, section "Baseline health gate"): re-enable the missing dependency or disable the load-generator task and record which here. Flag reload fallback (ADR 0033): the flag injector deletes the flagd pod if flagd does not serve the new variant within 120 s.
 
 ## Runbook links
 
@@ -77,4 +103,4 @@ Baseline gate (WKL-004) fails: re-enable the missing dependency or disable the l
 
 ## Last verified
 
-2026-11-27, 21ce6fa (transforms verified by unit tests and two real renders of chart 0.42.8; no deployed component exists to verify).
+2026-11-28, W1-T13 on branch `feat/w1-baseline-gate` (baseline health gate run against the live `baseline-v2` workload on k3d; transforms verified earlier by unit tests and two real renders of chart 0.42.8).

@@ -1,0 +1,66 @@
+# PromQL templates of the WKL-030 metric keys, with the names finalised per WKL-022 (W1-T13 Step 1; the
+# discovered names are recorded in wiki/components/telemetry.md). Single source of PromQL for mcp-telemetry
+# live mode (W3-T06), the Fault Lab exporter (W2-T09), scripts/baseline_gate.py and the alert rules
+# (templates/prometheusrule-workload.yaml). Placeholders: `$svc` is the OTel service.name and `$wl` the
+# workload name; the two are equal for every kept component (telemetry.md, finding F5).
+# Schema: metrics.<key>: {unit: str, promql: str, jvm_only: bool, services: [str] | null}.
+# `services: null` means every kept service; a list limits the key to the named services (other services
+# answer `null`). The pod regex `$wl-[a-z0-9]+-[a-z0-9]+` matches `<workload>-<replicaset hash>-<pod hash>`
+# only; the spec template `$wl-.*` would also match the pods of `frontend-proxy` for `$wl=frontend`
+# (telemetry.md, finding F6; ADR 0049 D2). `error_ratio` wraps numerator and denominator in `or vector(0)`, so
+# a service without error series (or without server spans) answers 0 instead of no data (F7; ADR 0049 D3).
+# `gc_pause` uses a `[5m]` window because OTLP-pushed JVM metrics have one sample per 60 s and `rate` needs
+# two samples (F8; ADR 0049 D4).
+metrics:
+  request_rate:
+    unit: req/s
+    jvm_only: false
+    services: null
+    promql: sum(rate(traces_spanmetrics_calls_total{service="$svc",span_kind="SPAN_KIND_SERVER"}[1m]))
+  error_ratio:
+    unit: ratio 0-1
+    jvm_only: false
+    services: null
+    promql: >-
+      (sum(rate(traces_spanmetrics_calls_total{service="$svc",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[1m])) or vector(0))
+      / clamp_min((sum(rate(traces_spanmetrics_calls_total{service="$svc",span_kind="SPAN_KIND_SERVER"}[1m])) or vector(0)), 1e-9)
+  latency_p50:
+    unit: seconds
+    jvm_only: false
+    services: null
+    promql: histogram_quantile(0.50, sum by (le) (rate(traces_spanmetrics_latency_bucket{service="$svc",span_kind="SPAN_KIND_SERVER"}[1m])))
+  latency_p95:
+    unit: seconds
+    jvm_only: false
+    services: null
+    promql: histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service="$svc",span_kind="SPAN_KIND_SERVER"}[1m])))
+  latency_p99:
+    unit: seconds
+    jvm_only: false
+    services: null
+    promql: histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_latency_bucket{service="$svc",span_kind="SPAN_KIND_SERVER"}[1m])))
+  cpu_usage:
+    unit: cores
+    jvm_only: false
+    services: null
+    promql: sum(rate(container_cpu_usage_seconds_total{namespace="shop",pod=~"$wl-[a-z0-9]+-[a-z0-9]+",container!="",container!="POD"}[1m]))
+  memory_working_set:
+    unit: bytes
+    jvm_only: false
+    services: null
+    promql: sum(container_memory_working_set_bytes{namespace="shop",pod=~"$wl-[a-z0-9]+-[a-z0-9]+",container!="",container!="POD"})
+  restarts:
+    unit: count per 5 min
+    jvm_only: false
+    services: null
+    promql: sum(increase(kube_pod_container_status_restarts_total{namespace="shop",pod=~"$wl-[a-z0-9]+-[a-z0-9]+"}[5m]))
+  kafka_consumer_lag:
+    unit: records
+    jvm_only: false
+    services: [fraud-detection]
+    promql: sum(kafka_consumer_records_lag{service_name="$svc",k8s_namespace_name="shop"})
+  gc_pause:
+    unit: seconds per s
+    jvm_only: true
+    services: [ad, fraud-detection]
+    promql: sum(rate(jvm_gc_duration_seconds_sum{service_name="$svc",k8s_namespace_name="shop"}[5m]))

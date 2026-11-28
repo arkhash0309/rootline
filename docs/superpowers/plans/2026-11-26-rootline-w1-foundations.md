@@ -4167,6 +4167,8 @@ If the pgvector check fails, build `deploy/images/postgres/Dockerfile` (`FROM gh
 **Requirement IDs:** WKL-004, WKL-022, WKL-030 (metric names), WKL-031, WKL-032.
 **Depends on:** W1-T12. **Branch:** `feat/w1-baseline-gate`.
 
+> **Amended 2026-11-28 after the W1-T13 implementation, per PG-30 (overview §5; ADR 0049 `wiki/adr/0049-w1-t13-baseline-gate-decisions.md`).** The implementer found the names of the running stack differ from spec §6.5 in four places and left eight points open; they are decided in ADR 0049 D1 to D8. Effect on the steps: Step 2 `metric-map.yaml` uses `service_name` for `kafka_consumer_lag` and `gc_pause`, the pod regex `$wl-[a-z0-9]+-[a-z0-9]+`, `or vector(0)` in `error_ratio` and `[5m]` in `gc_pause`; Step 3 `derive` computes the percentile in pure Python (no `numpy`); Step 4 the gate checks flags and load with `kubectl` first and treats no data as FAIL; Step 6 the rules are 89 (13 `ServiceHighErrorRate`, 13 `ServiceHighLatency`, 19 each `PodCrashLooping`, `HighCPU`, `HighMemory`, 1 `KafkaConsumerLagHigh`, 5 kube-state-metrics rules) and the service lists are the `rootlineAlerts` key of `values.yaml`; Step 7 the ExternalSecret and the `AlertmanagerConfig` are in `templates/alertmanager-config.yaml`, the `rootline` copy stays in W4-T13.
+
 **Files:**
 - Create: `scripts/baseline_gate.py`, `scripts/derive_thresholds.py`, `scripts/promql.py`
 - Create: `deploy/values/alert-thresholds.yaml` (generated, committed)

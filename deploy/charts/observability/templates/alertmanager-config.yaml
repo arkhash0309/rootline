@@ -1,0 +1,52 @@
+{{- /*
+Alertmanager routing (WKL-032, W1-T13): one route, one receiver `rootline-api`, no other receivers. The
+operator merges this AlertmanagerConfig into the Alertmanager of the kube-prometheus-stack; values.yaml sets
+alertmanagerConfigMatcherStrategy.type None so that no namespace matcher is added (alerts carry namespace=shop).
+The bearer token comes from Secret alertmanager-webhook key token, generated once by ESO from the Password
+generator password-48 of this namespace (platform-config chart, SEC-100). The copy in namespace `rootline` and
+the store `observability-reader` belong to W4-T13.
+*/ -}}
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: alertmanager-webhook
+  namespace: observability
+spec:
+  refreshInterval: "0"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: password-48
+  target:
+    name: alertmanager-webhook
+    creationPolicy: Owner
+    template:
+      type: Opaque
+      data:
+        token: {{ "{{ .password }}" | quote }}
+---
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: rootline
+  namespace: observability
+spec:
+  route:
+    receiver: rootline-api
+    groupBy: [alertname, service]
+    groupWait: 30s
+    groupInterval: 2m
+    repeatInterval: 1h
+  receivers:
+    - name: rootline-api
+      webhookConfigs:
+        - url: http://api.rootline.svc.cluster.local/hooks/alertmanager
+          sendResolved: true
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: alertmanager-webhook
+                key: token
