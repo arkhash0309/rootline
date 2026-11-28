@@ -1,7 +1,8 @@
 # Status
-Last updated: 2026-11-27 (stage W1-P3 integration, head 7f4ef1c)
+Last updated: 2026-11-28 (W1-T13 fix round 2 on `feat/w1-baseline-gate`, commit 9c6cc4b)
 ## Current milestone: Week 1 — Foundations
 ## Done
+- W1-T12 `task up` bring-up merged (PR #30; ADRs 0047, 0048 with the kafka voter fix and `baseline-v2`)
 - Stage W1-P3 integrated (W1-T09 workload render, W1-T10 GitOps root chart, W1-T11 observability and Postgres charts, W1-T14 CI; ADRs 0044-0046). ADR 0046 O3(a): namespace observability is PSS privileged, confirmed by the owner
 - Stage W1-P1 integrated into `develop` (W1-T02, W1-T03, W1-T04; ADRs 0001-0041)
 - Stage W1-P2 integrated (W1-T05 rootline-wiki skill, W1-T06 Taskfile and task doctor, W1-T07 rootline_common); W1-T05 Step 4 verification deferred to W1-S3
@@ -9,9 +10,8 @@ Last updated: 2026-11-27 (stage W1-P3 integration, head 7f4ef1c)
 - Swarm and integration tooling (W1-T16, commit 99002de, PG-16)
 - `rootline-env` repository created with README commit 35d4916 (W1-T08, GEN-010, GEN-011, GEN-024)
 ## In progress
+- W1-T13 baseline gate, metric map, thresholds and alert rules (branch `feat/w1-baseline-gate`; WKL-004, WKL-022, WKL-030 to WKL-032) — agent — review fix rounds 1 and 2 done; planner confirmed ADR 0049 D1 to D8 and decided the `HighCPU` defect as D9; fix round 2 applied D9 (`HighCPU` is `cpu_usage > 1.5` cores for `2m`, 19 rules, 89 in total, synced and inactive in the live cluster) and the `LOCUST_USERS=20` check measured `1.0343` cores for `load-generator` (below `1.5`, D9 stands); next: reviewer re-review
 ## Next
-- `rootline-wiki` agent skill (W1-T05), Taskfile and `task doctor` (W1-T06) and `rootline_common` (W1-T07), stage W1-P2
-- Workload render, k3d and ArgoCD, observability and Postgres, `task up`, baseline gate, CI (W1-T09 to W1-T14)
-- Week 1 acceptance and release (W1-T15)
+- Review and merge of W1-T13, then Week 1 acceptance and release (W1-T15)
 ## Blockers
 - None

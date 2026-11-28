@@ -19,6 +19,7 @@ kube-prometheus-stack:
     resources: {requests: {memory: 96Mi}, limits: {memory: 192Mi}}
   alertmanager:
     alertmanagerSpec:
+      alertmanagerConfigMatcherStrategy: {type: None}   # WKL-032: no namespace="observability" matcher is injected
       resources: {requests: {memory: 48Mi}, limits: {memory: 128Mi}}
   prometheus:
     prometheusSpec:
@@ -139,3 +140,46 @@ opentelemetry-collector:                  # WKL-020
         traces: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_grpc/tempo]}
         metrics: {receivers: [otlp], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_http/prometheus]}
         logs: {receivers: [otlp, file_log], processors: [memory_limiter, k8s_attributes, batch], exporters: [otlp_http/loki]}
+
+# Alert rule inputs of templates/prometheusrule-workload.yaml (WKL-030, WKL-031; W1-T13, ADR 0049 D6).
+# serverServices: the kept server-side services (every component of scripts/workload_transforms.py
+# KEPT_COMPONENTS except load-generator, frontend-proxy, kafka, valkey-cart, astronomy-db and flagd; WKL-004);
+# they get ServiceHighErrorRate and ServiceHighLatency rules. workloads: every kept component (WKL-002); they
+# get PodCrashLooping, HighCPU and HighMemory rules. kafkaLagService gets KafkaConsumerLagHigh.
+# tests/repo/test_alert_rules.py checks both lists against KEPT_COMPONENTS.
+rootlineAlerts:
+  serverServices:
+    - frontend
+    - ad
+    - cart
+    - checkout
+    - currency
+    - email
+    - payment
+    - product-catalog
+    - quote
+    - recommendation
+    - shipping
+    - fraud-detection
+    - image-provider
+  workloads:
+    - frontend
+    - frontend-proxy
+    - load-generator
+    - flagd
+    - ad
+    - cart
+    - valkey-cart
+    - checkout
+    - currency
+    - email
+    - payment
+    - product-catalog
+    - astronomy-db
+    - quote
+    - recommendation
+    - shipping
+    - kafka
+    - fraud-detection
+    - image-provider
+  kafkaLagService: fraud-detection
